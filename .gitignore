@@ -1,0 +1,23 @@
+# --- Personal / local (not for the shared repo) ---
+.claude/
+thingsToknow.pdf
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# --- Build output ---
+backend/target/
+target/
+
+# --- Logs / runtime artifacts ---
+*.log
+
+# --- OS / OneDrive junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+*~

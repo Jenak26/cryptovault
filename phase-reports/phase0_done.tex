@@ -1,0 +1,177 @@
+% =====================================================================
+%  CryptoVault — Phase 0 Completion Report
+%  Compile free on https://www.overleaf.com (Upload -> Recompile)
+%  or locally with MiKTeX:  pdflatex phase0_done.tex
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[hidelinks,colorlinks=true,linkcolor=blue!60!black,urlcolor=teal]{hyperref}
+
+\definecolor{accent}{RGB}{20,90,130}
+\definecolor{okgreen}{RGB}{30,120,60}
+\definecolor{codebg}{RGB}{245,245,248}
+
+\lstset{
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\small,
+  breaklines=true, frame=single, rulecolor=\color{gray!40},
+  framesep=6pt, xleftmargin=10pt, numbers=none, showstringspaces=false,
+}
+
+\newtcolorbox{done}{colback=okgreen!7,colframe=okgreen!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Verified}}
+\newtcolorbox{todo}{colback=orange!8,colframe=orange!70,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Remaining manual step (needs a reboot)}}
+\newtcolorbox{note}{colback=accent!6,colframe=accent!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small CryptoVault — Phase 0 Report}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\vspace{-1cm}\textbf{Phase 0 — Environment \& Skeleton}\\[3pt]
+\large Completion Report}
+\author{CryptoVault}
+\date{17 June 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{note}
+\textbf{Phase goal (from the plan):} a running, empty Spring Boot application that talks to
+MySQL + Redis, with a \code{GET /api/health} endpoint returning 200.\\[4pt]
+\textbf{Status:} Application skeleton built, compiles cleanly under JDK 21, and the health
+endpoint was \emph{verified live} (HTTP 200). The MySQL + Redis half is ready in code and waits
+only on Docker, which needs a one-time reboot to finish installing (details at the end).
+\end{note}
+
+% ---------------------------------------------------------------
+\section{What "Phase 0" Means}
+% ---------------------------------------------------------------
+Before writing any real features, we needed a skeleton that (a) compiles, (b) runs, and
+(c) answers a simple "are you alive?" request. This proves the whole toolchain — Java, the build
+tool, the framework, and every library we will rely on — fits together \emph{before} we pile
+business logic on top. Getting this green first is what stops a project from collapsing later.
+
+% ---------------------------------------------------------------
+\section{Tools Installed}
+% ---------------------------------------------------------------
+\begin{itemize}[leftmargin=*]
+  \item \textbf{JDK 21 (Eclipse Temurin 21.0.11, LTS)} — installed via \code{winget}. This is the
+        Java version banks standardise on and the one Spring Boot 3 is happiest with. (Your machine
+        also had Java 24; we use 21 explicitly for the build so behaviour is predictable.)
+  \item \textbf{Docker Desktop} — downloaded and installed via \code{winget}. It still needs WSL2
+        and a reboot before the engine runs (see the final section).
+\end{itemize}
+Already present and reused: \textbf{Git 2.49}, \textbf{Node.js v22} (for the React frontend later).
+\textbf{Maven} was \emph{not} installed system-wide on purpose --- the project ships a
+\textbf{Maven wrapper} (\code{mvnw}), which downloads the exact Maven version itself. One less thing
+to manage.
+
+% ---------------------------------------------------------------
+\section{Project Created}
+% ---------------------------------------------------------------
+A Spring Boot 3.5.15 project was generated (Java 21, Maven) with these starters:
+Web, Security, Data JPA, Data Redis, Validation, MySQL driver, Flyway, Lombok, Actuator.
+Two extra libraries were added by hand to \code{pom.xml}:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{jjwt} (\code{0.12.6}) --- creating and validating JWT login tokens (Phase 2).
+  \item \textbf{Bouncy Castle} (\code{bcprov-jdk18on 1.78.1}) --- the crypto provider for
+        ChaCha20-Poly1305 now and post-quantum algorithms later.
+\end{itemize}
+
+\subsection*{Files written}
+\begin{itemize}[leftmargin=*]
+  \item \code{backend/pom.xml} --- dependencies (jjwt + Bouncy Castle added).
+  \item \code{backend/docker-compose.yml} --- defines MySQL 8 + Redis 7 containers.
+  \item \code{backend/src/main/resources/application.yml} --- DB/Redis/Flyway config; server port
+        set to \textbf{8081} (port 8080 is taken by another service on this PC);
+        \code{ddl-auto=validate} so Flyway owns the schema.
+  \item \code{.../controller/HealthController.java} --- the \code{GET /api/health} endpoint.
+  \item \code{.../config/SecurityConfig.java} --- opens \code{/api/health} and \code{/api/auth/**},
+        locks everything else, sets the API to stateless (ready for JWT in Phase 3).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Verification (evidence, not claims)}
+% ---------------------------------------------------------------
+\begin{done}
+\textbf{1. Compilation.} \code{mvnw compile} $\Rightarrow$ \textbf{BUILD SUCCESS}. Every dependency
+(Spring Security, JPA, Flyway, Redis, jjwt, Bouncy Castle) resolved and all source compiled under
+Java 21.
+\end{done}
+
+\begin{done}
+\textbf{2. The app runs and answers.} The application was started and the endpoint returned:
+\begin{lstlisting}
+GET http://localhost:8081/api/health
+HTTP 200
+{"status":"UP","service":"cryptovault"}
+\end{lstlisting}
+(Run as a temporary no-database smoke test so we could prove the web + security + health stack
+works \emph{before} Docker is ready. No permanent config was changed to achieve this.)
+\end{done}
+
+\begin{note}
+\textbf{Why a "no-database" smoke test?} The full app wants MySQL + Redis at startup, and Docker
+isn't running yet. To still prove the skeleton is alive, we temporarily told Spring to skip the
+database auto-configuration for one run. The real, full run (with MySQL + Redis) happens the moment
+Docker is up --- nothing in the code needs to change.
+\end{note}
+
+% ---------------------------------------------------------------
+\section{Folder Organisation}
+% ---------------------------------------------------------------
+The workspace was tidied into:
+\begin{lstlisting}
+crypto vault/
+  docs/            <- plan, learning guide, tech stack, original PDF
+  phase-reports/   <- this file (phase0_done.tex), future phaseN_done.tex
+  backend/         <- the Spring Boot project
+\end{lstlisting}
+
+% ---------------------------------------------------------------
+\section{The One Remaining Step (Docker)}
+% ---------------------------------------------------------------
+\begin{todo}
+Docker Desktop is installed but its engine needs \textbf{WSL2}, which is not yet on the machine.
+Completing it requires administrator rights and a reboot --- steps that must be run interactively:
+\begin{enumerate}[leftmargin=*]
+  \item Open \textbf{PowerShell as Administrator} and run: \code{wsl --install}
+  \item \textbf{Reboot} the computer when it asks.
+  \item Launch \textbf{Docker Desktop} once; accept the terms; wait for "Engine running".
+  \item Then, from the \code{backend} folder: \code{docker compose up -d}
+        (starts MySQL + Redis), and run the app with \code{mvnw spring-boot:run}.
+\end{enumerate}
+Once that succeeds, \code{http://localhost:8081/api/health} returns 200 \emph{with} the databases
+live --- and Phase 0 is 100\% complete by the plan's definition.
+\end{todo}
+
+% ---------------------------------------------------------------
+\section{Next: Phase 1 --- Database Schema}
+% ---------------------------------------------------------------
+With the skeleton proven, Phase 1 adds the five tables (\code{roles}, \code{users},
+\code{crypto\_keys}, \code{vault\_records}, \code{audit\_logs}) as JPA entities plus Flyway
+migrations, and seeds the \code{roles} table. That work can be written now and will run as soon as
+Docker is live.
+
+\vspace{1em}
+\begin{center}\itshape Phase 0 substantially complete --- skeleton built, compiled, and proven to
+serve requests. Only the Docker reboot stands between you and the full stack running.\end{center}
+
+\end{document}

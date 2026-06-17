@@ -1,0 +1,28 @@
+# CryptoVault local infrastructure: MySQL + Redis.
+# Start with:  docker compose up -d
+# Stop with:   docker compose down   (add -v to also wipe data)
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: cryptovault-mysql
+    environment:
+      MYSQL_DATABASE: cryptovault
+      MYSQL_ROOT_PASSWORD: devpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pdevpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    container_name: cryptovault-redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  mysql_data:

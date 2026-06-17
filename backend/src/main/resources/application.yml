@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: cryptovault
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/cryptovault?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: root
+    password: devpassword
+
+  jpa:
+    hibernate:
+      # validate = Hibernate checks entities match the schema but NEVER edits it.
+      # Flyway owns the schema (see src/main/resources/db/migration).
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  # 8081 because 8080 is taken by another service on this machine.
+  port: 8081
+
+# Expose only the health actuator endpoint for now.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+# ---- CryptoVault application settings ----
+cryptovault:
+  crypto:
+    # The currently ACTIVE algorithm for NEW encryptions (crypto-agility switch).
+    # Old records keep decrypting with whatever algorithm they were stored under.
+    active-algorithm: AES-256-GCM

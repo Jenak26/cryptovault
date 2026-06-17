@@ -1,0 +1,736 @@
+% =====================================================================
+%  CryptoVault — Learning Guide
+%  A teach-as-you-go companion for building the CryptoVault platform
+%  on a Java + Spring Boot stack.
+%
+%  HOW TO COMPILE (no install needed):
+%    1. Go to https://www.overleaf.com  ->  New Project  ->  Upload Project
+%    2. Upload this .tex file, press "Recompile". Done — you get a PDF.
+%  OR locally: install MiKTeX (Windows) and run:  pdflatex CryptoVault_Learning_Guide.tex
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{amssymb}
+\usepackage[hidelinks,colorlinks=true,linkcolor=blue!60!black,urlcolor=teal]{hyperref}
+
+% ---------- Colors ----------
+\definecolor{codebg}{RGB}{245,245,248}
+\definecolor{codekw}{RGB}{0,90,160}
+\definecolor{codestr}{RGB}{160,60,30}
+\definecolor{codecmt}{RGB}{100,120,100}
+\definecolor{accent}{RGB}{20,90,130}
+
+% ---------- Code listings ----------
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codekw}\bfseries,
+  stringstyle=\color{codestr},
+  commentstyle=\color{codecmt}\itshape,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!40},
+  framesep=6pt,
+  xleftmargin=14pt,
+  showstringspaces=false,
+  tabsize=2,
+}
+\lstdefinestyle{plain}{numbers=none}
+
+% ---------- Callout boxes ----------
+\newtcolorbox{keyidea}{colback=accent!6,colframe=accent!60,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Key Idea}}
+\newtcolorbox{whymatters}{colback=teal!6,colframe=teal!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Why this matters for CryptoVault}}
+\newtcolorbox{pitfall}{colback=red!5,colframe=red!50,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Common pitfall}}
+\newtcolorbox{analogy}{colback=yellow!8,colframe=yellow!60!orange,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Analogy}}
+
+% ---------- Headers ----------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small CryptoVault — Learning Guide}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\Large\bfseries\color{accent}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\large\bfseries\color{accent!85!black}}{\thesubsection}{0.6em}{}
+
+\title{\vspace{-1cm}\textbf{CryptoVault}\\[4pt]
+\large A Learn-As-You-Build Guide\\[2pt]
+\normalsize Java + Spring Boot + MySQL + Cryptography}
+\author{Companion to the CryptoVault Implementation Plan}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{tcolorbox}[colback=accent!5,colframe=accent!50]
+\textbf{How to read this guide.} You do not need to know any of this \emph{before} you start.
+Read each part the day you reach the matching build phase. Every concept is explained from
+zero, with an analogy, why it matters \emph{here}, and the pitfalls that trip people up.
+Code samples are illustrative — your real code lives in the project, this is to teach the ideas.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+% =====================================================================
+\section{The Big Picture: What Are You Actually Building?}
+% =====================================================================
+
+CryptoVault is a \textbf{secure data platform}. Strip away the buzzwords and it does four things:
+
+\begin{enumerate}[leftmargin=*]
+  \item Lets people \textbf{sign up and log in} safely (authentication).
+  \item Decides \textbf{who is allowed to do what} (authorization / roles).
+  \item \textbf{Encrypts} data before storing it, so even someone who steals the database sees gibberish.
+  \item Keeps a \textbf{tamper-resistant log} of every security-relevant action (audit).
+\end{enumerate}
+
+The special trick — the thing that makes it interesting to banks — is \textbf{crypto-agility}:
+the ability to \emph{change which encryption algorithm you use by flipping a setting}, without
+rewriting your application. We will build up to that.
+
+\begin{analogy}
+Think of a coat-check at a fancy hotel. You hand over your coat (data), they lock it in a
+numbered locker (encryption), and give you a ticket (a record of which locker + which key opened
+it). Crypto-agility means: if the hotel upgrades all its locks next year, your old ticket still
+opens \emph{your} old locker, while new coats go into the new locks. Nothing of yours breaks.
+\end{analogy}
+
+\subsection{How a web backend works (the mental model)}
+
+Everything you build sits in this loop:
+
+\begin{lstlisting}[style=plain,language=]
+Browser (React frontend)
+   |   sends an HTTP request:  POST /api/auth/login  { email, password }
+   v
+Spring Boot backend  (your Java code)
+   |   - reads the request
+   |   - checks the password against the database
+   |   - if good, creates a token and sends it back
+   v
+MySQL database  (permanent storage)  +  Redis (fast temporary storage)
+\end{lstlisting}
+
+\begin{keyidea}
+A \textbf{backend} is just a program that listens for requests, does some logic, talks to a
+database, and sends back a response. "Building the backend" = writing the logic that runs in the
+middle box above. That is 80\% of this project.
+\end{keyidea}
+
+\subsection{HTTP, REST, and JSON in 60 seconds}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{HTTP} is the language browsers and servers speak. A request has a \emph{method}
+        (verb) and a \emph{path} (noun).
+  \item \textbf{Methods:} \texttt{GET} (read), \texttt{POST} (create), \texttt{PUT}/\texttt{PATCH}
+        (update), \texttt{DELETE} (remove).
+  \item \textbf{REST} is a convention: organize your API around \emph{resources} (nouns) like
+        \texttt{/api/vault/\{id\}}, and use the HTTP verbs to act on them.
+  \item \textbf{JSON} is the text format for the data you send back and forth, e.g.
+        \texttt{\{"email":"a@b.com","role":"admin"\}}.
+  \item \textbf{Status codes:} \texttt{200} OK, \texttt{201} Created, \texttt{401} Unauthorized
+        (not logged in), \texttt{403} Forbidden (logged in but not allowed), \texttt{404} Not found,
+        \texttt{500} Server error.
+\end{itemize}
+
+% =====================================================================
+\section{Java Essentials (only what you need)}
+% =====================================================================
+
+You do not need to master all of Java. You need enough to read and write Spring Boot code
+comfortably. Here is the survival kit.
+
+\subsection{Classes, objects, and types}
+
+Java is \textbf{object-oriented}: code is organized into \emph{classes} (blueprints) that create
+\emph{objects} (instances). It is also \textbf{statically typed}: every variable has a declared
+type the compiler checks before the program runs.
+
+\begin{lstlisting}[language=Java]
+public class User {          // a class = a blueprint
+    private String email;    // a field (data the object holds)
+    private boolean active;
+
+    public String getEmail() {        // a method (behaviour)
+        return email;
+    }
+    public void setEmail(String e) {
+        this.email = e;               // "this" = the current object
+    }
+}
+
+User u = new User();         // create an object from the blueprint
+u.setEmail("a@b.com");       // call a method on it
+\end{lstlisting}
+
+\begin{keyidea}
+\textbf{class} = blueprint, \textbf{object} = a thing built from it, \textbf{field} = data inside
+it, \textbf{method} = an action it can perform. 90\% of Java code is classes with fields and
+methods. Spring builds and connects these objects for you.
+\end{keyidea}
+
+\subsection{Access modifiers and common keywords}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{public} — usable from anywhere; \texttt{private} — only inside this class.
+  \item \texttt{final} — cannot be reassigned (use for constants).
+  \item \texttt{void} — a method that returns nothing.
+  \item \texttt{static} — belongs to the class itself, not to an individual object.
+\end{itemize}
+
+\subsection{Annotations — the \texttt{@} symbols everywhere}
+
+You will see lines like \texttt{@RestController} or \texttt{@Autowired}. An \textbf{annotation} is
+a label you stick on a class, method, or field that tells a framework "treat this specially." They
+do nothing by themselves — Spring reads them and acts.
+
+\begin{analogy}
+Annotations are like sticky notes on furniture before a move: "FRAGILE", "KITCHEN", "LOAD LAST."
+The note does not move the box — the movers (Spring) read the note and behave accordingly.
+\end{analogy}
+
+\subsection{Generics and collections}
+
+\texttt{List<User>} means "a list whose elements are \texttt{User} objects." The \texttt{<...>}
+part is a \textbf{generic} — it makes containers type-safe. You will mostly use:
+\texttt{List<T>} (ordered), \texttt{Map<K,V>} (key$\rightarrow$value), and \texttt{Optional<T>}
+(a box that may or may not contain a value — Java's safe way to say "maybe null").
+
+% =====================================================================
+\section{Maven: Dependencies and Builds}
+% =====================================================================
+
+\textbf{Maven} is the tool that (a) downloads the libraries your project needs and (b) compiles and
+packages your app. You describe everything in one file: \texttt{pom.xml}.
+
+\begin{lstlisting}[language=XML]
+<dependencies>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+  </dependency>
+</dependencies>
+\end{lstlisting}
+
+\begin{keyidea}
+You never download JAR files by hand. You list a dependency in \texttt{pom.xml}, Maven fetches it
+and everything it depends on. A "\textbf{starter}" (like \texttt{spring-boot-starter-web}) is a
+curated bundle of libraries for one job, so you add one line instead of twenty.
+\end{keyidea}
+
+% =====================================================================
+\section{Spring Boot: The Framework}
+% =====================================================================
+
+Spring Boot is the engine of your backend. Two ideas unlock all of it.
+
+\subsection{Idea 1 — Inversion of Control \& Dependency Injection}
+
+Normally \emph{you} create objects with \texttt{new}. In Spring, \textbf{Spring} creates the
+important objects (called \textbf{beans}) and hands them to whoever needs them. That handing-over
+is \textbf{dependency injection (DI)}, and Spring being in charge is \textbf{Inversion of Control (IoC)}.
+
+\begin{lstlisting}[language=Java]
+@Service                                 // "Spring, manage this object"
+public class AuthService {
+    private final UserRepository repo;
+
+    public AuthService(UserRepository repo) {  // Spring INJECTS the repo here
+        this.repo = repo;
+    }
+}
+\end{lstlisting}
+
+\begin{analogy}
+Without DI you are a chef who must also farm the vegetables, milk the cows, and mine the salt
+before cooking. With DI, ingredients (objects you depend on) simply \emph{appear} on your counter,
+prepped. You focus on cooking (your logic).
+\end{analogy}
+
+\begin{whymatters}
+Your \texttt{VaultService} needs the \texttt{CryptoEngine}, the \texttt{KeyManager}, and the
+database repository. DI wires these together automatically, so swapping one implementation for
+another (e.g., a fake crypto engine in tests) is trivial. This is also \emph{why} crypto-agility is
+clean in Spring — you inject an interface, not a concrete algorithm.
+\end{whymatters}
+
+\subsection{Idea 2 — Layered architecture (Controller / Service / Repository)}
+
+Spring apps are organized in three layers. Keep logic in the right layer and the project stays sane.
+
+\begin{lstlisting}[style=plain,language=]
+Controller   ->  receives HTTP requests, validates input, returns responses.
+                 (thin — no business logic here)
+Service      ->  the brain: business rules, orchestration, transactions.
+Repository   ->  talks to the database (queries, saves). You barely write code here.
+\end{lstlisting}
+
+\begin{lstlisting}[language=Java]
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+    private final AuthService auth;
+    public AuthController(AuthService auth) { this.auth = auth; }
+
+    @PostMapping("/login")
+    public TokenResponse login(@RequestBody LoginRequest body) {
+        return auth.login(body.email(), body.password());  // delegate to service
+    }
+}
+\end{lstlisting}
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{@RestController} — this class handles web requests and returns JSON.
+  \item \texttt{@RequestMapping("/api/auth")} — base path for everything in the class.
+  \item \texttt{@PostMapping("/login")} — handle \texttt{POST /api/auth/login}.
+  \item \texttt{@RequestBody} — convert the incoming JSON into a Java object automatically.
+\end{itemize}
+
+\begin{pitfall}
+Beginners stuff business logic into controllers. Don't. Controllers should read like a table of
+contents: take input, hand it to a service, return the result. All real decisions live in services.
+\end{pitfall}
+
+% =====================================================================
+\section{The Database: MySQL, JPA \& Migrations}
+% =====================================================================
+
+\subsection{Relational databases in one minute}
+
+A \textbf{relational database} stores data in \textbf{tables} (like spreadsheets): rows are
+records, columns are fields. Tables link to each other via \textbf{keys}.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Primary key} — a column that uniquely identifies each row (e.g., \texttt{id}).
+  \item \textbf{Foreign key} — a column that points to another table's primary key (e.g.,
+        \texttt{vault\_records.user\_id} points to \texttt{users.id}). This is how "this record
+        belongs to that user" is expressed.
+  \item \textbf{Index} — a lookup structure that makes searching a column fast (like a book's index).
+  \item \textbf{Transaction} — a group of changes that all succeed or all fail together (ACID).
+        Critical for banking: money must never half-move.
+\end{itemize}
+
+\begin{whymatters}
+CryptoVault has five tables: \texttt{roles}, \texttt{users}, \texttt{crypto\_keys},
+\texttt{vault\_records}, \texttt{audit\_logs}. Foreign keys tie records to users and keys; indexes
+keep login and audit queries fast even with millions of rows. Use the \textbf{InnoDB} engine —
+it is the only MySQL engine that supports foreign keys and transactions.
+\end{whymatters}
+
+\subsection{JPA and Hibernate: objects $\leftrightarrow$ tables}
+
+Writing raw SQL for everything is tedious. \textbf{JPA} is a standard for mapping Java objects to
+database rows; \textbf{Hibernate} is the implementation Spring uses. You annotate a class as an
+\textbf{entity} and Hibernate handles the SQL.
+
+\begin{lstlisting}[language=Java]
+@Entity
+@Table(name = "users")
+public class User {
+    @Id
+    private String id;                 // primary key (a UUID string)
+
+    @Column(nullable = false, unique = true)
+    private String email;
+
+    @Column(name = "password_hash", nullable = false)
+    private String passwordHash;
+
+    @ManyToOne                         // many users -> one role
+    @JoinColumn(name = "role_id")
+    private Role role;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Java]
+// A repository: you declare the interface, Spring writes the implementation.
+public interface UserRepository extends JpaRepository<User, String> {
+    Optional<User> findByEmail(String email);   // Spring generates the SQL from the name!
+}
+\end{lstlisting}
+
+\begin{keyidea}
+You write an \emph{interface} with method names like \texttt{findByEmail}, and Spring Data JPA
+generates the query for you at runtime. \texttt{save()}, \texttt{findById()}, \texttt{deleteById()}
+come for free. This is why the Repository layer is almost code-free.
+\end{keyidea}
+
+\subsection{Flyway: version control for your schema}
+
+As the project grows you change the database (add a column, a table). \textbf{Flyway} stores each
+change as a numbered SQL file (\texttt{V1\_\_create\_users.sql}, \texttt{V2\_\_add\_mfa.sql}) and
+applies them in order, once each. Everyone's database ends up identical and reproducible.
+
+\begin{pitfall}
+Do not let Hibernate auto-create your schema in anything real (\texttt{ddl-auto=update}). It is
+unpredictable and unsafe for production. Own your schema explicitly with Flyway migrations — banks
+expect this discipline.
+\end{pitfall}
+
+% =====================================================================
+\section{Security I: Authentication}
+% =====================================================================
+
+\subsection{Authentication vs Authorization}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Authentication (AuthN)} — \emph{Who are you?} Proving identity (login).
+  \item \textbf{Authorization (AuthZ)} — \emph{What are you allowed to do?} (roles/permissions).
+\end{itemize}
+
+\subsection{Password hashing: why you never store passwords}
+
+If you store raw passwords and your database leaks, every user is compromised — and people reuse
+passwords everywhere. Instead you store a \textbf{hash}: a one-way scramble. You can verify a
+password by hashing the attempt and comparing, but you can never reverse the hash back to the
+password.
+
+\textbf{bcrypt} is the standard for password hashing. Crucially, it is \emph{deliberately slow} and
+\textbf{salted} (each password gets random bytes mixed in), which defeats pre-computed
+"rainbow table" attacks and makes brute-forcing expensive.
+
+\begin{lstlisting}[language=Java]
+var encoder = new BCryptPasswordEncoder();
+String hash = encoder.encode("hunter2");        // store THIS in the DB
+boolean ok  = encoder.matches("hunter2", hash); // true at login time
+\end{lstlisting}
+
+\begin{pitfall}
+Never use plain \texttt{SHA-256}/\texttt{MD5} for passwords — they are fast, which is exactly wrong
+for passwords (fast = easy to brute force) and they are unsalted by default. Use bcrypt (or
+Argon2). In an interview, "Why bcrypt over SHA-256?" is a near-guaranteed question.
+\end{pitfall}
+
+\subsection{JWT: stateless login tokens}
+
+After you log in, the server needs to remember it is you on every future request. A \textbf{JWT}
+(JSON Web Token) is a signed string the server hands you at login; you send it back on each
+request, and the server trusts it because the signature proves the server issued it.
+
+A JWT has three dot-separated parts: \texttt{header.payload.signature}.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Header} — metadata (which signing algorithm).
+  \item \textbf{Payload} ("claims") — data like \texttt{userId}, \texttt{role}, \texttt{expiry}.
+        \emph{This is readable by anyone — never put secrets in it.}
+  \item \textbf{Signature} — a cryptographic seal made with a secret key only the server knows.
+        Tamper with the payload and the signature no longer matches.
+\end{itemize}
+
+\begin{analogy}
+A JWT is a festival wristband. The gate (server) stamps it with a hard-to-fake seal (signature).
+On re-entry you just flash the wristband — no need to re-check your ID against a guest list. That
+"no guest list lookup" is what \emph{stateless} means: the token itself carries the proof.
+\end{analogy}
+
+\begin{whymatters}
+At logout you face a problem: a JWT is valid until it expires, even after "logging out." Solution:
+keep a \textbf{blacklist} of revoked token IDs in \textbf{Redis}, with an expiry matching the
+token's. On each request, check the blacklist. This is why the stack pairs JWT with Redis.
+\end{whymatters}
+
+\subsection{How Spring Security ties it together}
+
+Spring Security inserts a chain of \textbf{filters} in front of your controllers. For CryptoVault
+you add one custom filter that, on every request: reads the \texttt{Authorization: Bearer <jwt>}
+header, validates the signature and expiry, checks the Redis blacklist, and if all good, tells
+Spring "this request is authenticated as user X with role Y." Your controllers then just trust that.
+
+% =====================================================================
+\section{Security II: Authorization (RBAC)}
+% =====================================================================
+
+\textbf{Role-Based Access Control (RBAC)} means permissions are attached to \emph{roles}, and users
+have roles. CryptoVault keeps it simple: two roles, \texttt{admin} and \texttt{user}.
+
+\begin{lstlisting}[language=Java]
+@PostMapping("/api/admin/rotate-key")
+@PreAuthorize("hasRole('ADMIN')")     // only admins may call this
+public void rotateKey() { ... }
+\end{lstlisting}
+
+\begin{pitfall}
+Resist building a fancy permissions matrix early. Two roles cover the MVP. Premature complexity
+here is the \#1 way auth code becomes an unmaintainable mess. Add granularity only when a real
+requirement demands it.
+\end{pitfall}
+
+% =====================================================================
+\section{Cryptography: The Heart of CryptoVault}
+% =====================================================================
+
+This is the part that makes the project special. Take it slowly — the concepts are not large, but
+each detail matters because crypto fails \emph{silently}: a mistake still "works," it is just
+insecure.
+
+\subsection{Symmetric encryption basics}
+
+\textbf{Symmetric encryption} uses one secret \textbf{key} to both encrypt (lock) and decrypt
+(unlock) data. Plaintext + key $\rightarrow$ ciphertext; ciphertext + key $\rightarrow$ plaintext.
+If you don't have the key, the ciphertext is meaningless noise.
+
+\subsection{AES-256-GCM (your default algorithm)}
+
+\textbf{AES} is the industry-standard symmetric cipher. \textbf{256} is the key size in bits
+(very strong). \textbf{GCM} (Galois/Counter Mode) is the \emph{mode} — and the important part:
+GCM provides \textbf{authenticated encryption}. It produces, alongside the ciphertext, an
+\textbf{authentication tag} that detects \emph{any} tampering. If even one bit of the ciphertext is
+altered, decryption \emph{fails loudly} instead of returning corrupted data.
+
+\begin{keyidea}
+"Authenticated encryption" = confidentiality \emph{and} integrity in one step. You learn both that
+nobody \emph{read} the data (it was encrypted) and that nobody \emph{changed} it (the tag verifies).
+Always prefer authenticated modes (GCM, Poly1305) over old unauthenticated ones (CBC, ECB).
+\end{keyidea}
+
+\subsection{The nonce / IV — the rule you must not break}
+
+GCM needs a \textbf{nonce} (also called an IV — initialization vector): a unique value used once
+per encryption with a given key. It is not secret — you store it next to the ciphertext — but it
+\textbf{must never repeat} under the same key.
+
+\begin{pitfall}
+\textbf{Reusing a nonce with the same key in GCM is catastrophic} — it can leak the key and let an
+attacker forge messages. Always generate a fresh random nonce (e.g., 12 random bytes) for every
+single encryption. This is the single most important crypto rule in the whole project.
+\end{pitfall}
+
+\textbf{What you actually store per record:} \texttt{nonce + ciphertext + tag} (typically
+concatenated), plus \emph{which algorithm} and \emph{which key version} produced it. That last bit
+is what makes decryption-after-rotation possible.
+
+\subsection{ChaCha20-Poly1305 (your second algorithm)}
+
+\textbf{ChaCha20} is a modern stream cipher; \textbf{Poly1305} is its authentication tag. Together
+(ChaCha20-Poly1305) they are another authenticated-encryption scheme — an excellent alternative to
+AES-GCM, especially fast in software and without some of AES's hardware-timing concerns. Having two
+algorithms is what lets you \emph{demonstrate} crypto-agility.
+
+\subsection{Crypto-agility: the core differentiator}
+
+Most apps hardcode their algorithm: \texttt{AES.encrypt(data)} is scattered everywhere. When AES
+must be replaced, you hunt down every call site, rewrite, retest, redeploy. \textbf{Crypto-agility}
+removes the hardcoding: your app calls an abstract \texttt{encrypt(data)}, and a
+\textbf{configuration value} decides which concrete algorithm runs underneath.
+
+We implement this with the \textbf{Strategy design pattern}:
+
+\begin{lstlisting}[language=Java]
+public interface CipherStrategy {                 // the abstraction
+    EncryptedBlob encrypt(byte[] plaintext, SecretKey key);
+    byte[]        decrypt(EncryptedBlob blob, SecretKey key);
+    String        name();                         // "AES-256-GCM"
+}
+
+@Component class AesGcmStrategy      implements CipherStrategy { /* ... */ }
+@Component class ChaCha20Poly1305Strategy implements CipherStrategy { /* ... */ }
+\end{lstlisting}
+
+\begin{lstlisting}[language=Java]
+@Service
+public class CryptoEngine {
+    private final Map<String, CipherStrategy> strategies;  // Spring injects ALL of them
+    private final CryptoConfig config;
+
+    // ENCRYPT: pick the currently-active algorithm from config
+    public EncryptedBlob encrypt(byte[] data, SecretKey key) {
+        return strategies.get(config.getActiveAlgorithm()).encrypt(data, key);
+    }
+    // DECRYPT: pick the algorithm THIS record was stored with
+    public byte[] decrypt(EncryptedBlob blob, SecretKey key) {
+        return strategies.get(blob.getAlgorithm()).decrypt(blob, key);
+    }
+}
+\end{lstlisting}
+
+\begin{keyidea}
+\textbf{Encrypt with the \emph{active} algorithm; decrypt with the algorithm the data was \emph{stored
+with}.} Because each record remembers its own algorithm + key version, changing the active algorithm
+affects only \emph{new} writes — old data keeps decrypting perfectly. That is crypto-agility.
+\end{keyidea}
+
+\subsection{Key versioning and rotation}
+
+A \textbf{key rotation} is replacing the active key with a new one — good hygiene, and sometimes
+mandated after an incident. The trick: old data was encrypted with old keys, so you cannot just
+throw old keys away.
+
+The \texttt{crypto\_keys} table tracks every key version with a \textbf{status}:
+\begin{itemize}[leftmargin=*]
+  \item \texttt{active} — used for new encryption now (exactly one at a time).
+  \item \texttt{retired} — no longer used for new writes, but \textbf{kept} so old records still decrypt.
+  \item \texttt{revoked} — compromised; flagged, and its data should be re-encrypted urgently.
+\end{itemize}
+
+Each \texttt{vault\_record} stores its \texttt{key\_version}. On decryption you look up that exact
+version. \textbf{Never hard-delete a key (or algorithm) that any record still references} — mark it
+retired instead.
+
+\begin{pitfall}
+The raw key material must \emph{never} sit in the database in plaintext. Encrypt keys at rest under
+a \textbf{master key} that lives outside the DB (an environment variable for the MVP, a proper KMS
+later). A vault whose keys are stored in the clear is not a vault.
+\end{pitfall}
+
+\subsection{Re-encryption jobs (V2)}
+
+When you change the default algorithm, old records still use the old one. A \textbf{re-encryption
+job} is a background task that walks old records, decrypts with the old algorithm/key, re-encrypts
+with the new one, and updates the row. It must be \textbf{idempotent and resumable} — track
+progress row-by-row so an interruption can pick up where it stopped without double-processing.
+
+\subsection{Post-quantum cryptography (V3, stretch)}
+
+Large quantum computers could one day break today's public-key crypto. \textbf{Post-quantum
+cryptography (PQC)} uses algorithms believed safe against them:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{ML-KEM} (formerly Kyber) — key encapsulation (securely agreeing on a shared key).
+  \item \textbf{ML-DSA} (formerly Dilithium) — digital signatures.
+  \item \textbf{Hybrid mode} (e.g., \texttt{X25519 + ML-KEM}) — combine a classical and a PQC
+        algorithm so you are safe if \emph{either} holds. This is the recommended transition strategy.
+\end{itemize}
+
+\begin{whymatters}
+Banks worry about "harvest now, decrypt later" — adversaries storing encrypted data today to crack
+once quantum computers mature. Even \emph{mentioning} ML-KEM/ML-DSA and hybrid mode in an interview
+signals you are ahead of the field. In Java, \textbf{Bouncy Castle} provides both classical and
+post-quantum primitives, so no extra library is needed.
+\end{whymatters}
+
+% =====================================================================
+\section{Supporting Tech: Redis \& Docker}
+% =====================================================================
+
+\subsection{Redis — fast, in-memory, expendable}
+
+\textbf{Redis} is an in-memory key$\rightarrow$value store. It is extremely fast but data lives in
+RAM, so treat it as \emph{disposable}. CryptoVault uses it for things that are short-lived by nature:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{JWT blacklist} — revoked tokens, with a TTL (auto-expiry) matching the token expiry.
+  \item \textbf{Rate limiting} — counting login attempts per IP to block brute force.
+  \item \textbf{OTP codes} — one-time MFA codes that expire in minutes (V2).
+\end{itemize}
+
+\begin{pitfall}
+Never make Redis the \emph{only} copy of anything important. MySQL is the source of truth; Redis is
+a fast scratchpad. If Redis is wiped, the app should still be correct, just briefly slower or
+re-prompting for re-login.
+\end{pitfall}
+
+\subsection{Docker \& Docker Compose}
+
+\textbf{Docker} packages software into \textbf{containers} — self-contained boxes that run
+identically on any machine. Instead of installing MySQL and Redis natively (fiddly, version
+conflicts), you describe them in a \texttt{docker-compose.yml} file and start both with one command.
+
+\begin{lstlisting}[language=YAML]
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: cryptovault
+      MYSQL_ROOT_PASSWORD: devpassword
+    ports: ["3306:3306"]
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+\end{lstlisting}
+
+\begin{keyidea}
+\texttt{docker compose up} starts MySQL + Redis instantly, configured and isolated.
+\texttt{docker compose down} removes them cleanly. No native installs, no "works on my machine"
+problems. This is the modern, professional way to run local dependencies.
+\end{keyidea}
+
+% =====================================================================
+\section{The Frontend: React + TypeScript (build last)}
+% =====================================================================
+
+The frontend is what users see in the browser. Build it \emph{after} the API is stable — chasing a
+moving API wastes time.
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{React} builds UIs from \textbf{components} — reusable functions that return markup.
+        State changes re-render the affected component automatically.
+  \item \textbf{TypeScript} is JavaScript with types — it catches mistakes (like passing a number
+        where text is expected) before the code runs. Same value proposition as Java's static types.
+  \item \textbf{Axios} calls your backend: \texttt{axios.post('/api/auth/login', \{email, password\})}.
+  \item \textbf{Recharts} renders the admin dashboard charts (login attempts, algorithm usage, key
+        rotation history).
+\end{itemize}
+
+\begin{whymatters}
+Banks weight the \emph{backend and security} far more than UI polish. Keep the frontend clean,
+banking-styled (minimal palette, clear error states), and functional. It is a showcase for your
+API, not the star of the project.
+\end{whymatters}
+
+% =====================================================================
+\section{How It All Connects (one full request)}
+% =====================================================================
+
+Trace "store a secret note" end-to-end to cement the mental model:
+
+\begin{enumerate}[leftmargin=*]
+  \item React sends \texttt{POST /api/vault/store} with the note and the JWT in the header.
+  \item Spring Security's filter validates the JWT, checks the Redis blacklist $\rightarrow$
+        request is authenticated as user X.
+  \item \texttt{VaultController} receives it, hands the note to \texttt{VaultService}.
+  \item \texttt{VaultService} asks \texttt{KeyManager} for the active key, and \texttt{CryptoEngine}
+        to encrypt using the \emph{active} algorithm (say AES-256-GCM) with a fresh nonce.
+  \item It saves a \texttt{vault\_record}: the encrypted blob, \texttt{algorithm\_used="AES-256-GCM"},
+        \texttt{key\_version=3}, owner \texttt{user\_id=X}.
+  \item \texttt{AuditService} logs \texttt{(userX, "VAULT\_STORE", ip, now)}.
+  \item A \texttt{201 Created} goes back to React.
+\end{enumerate}
+
+Later, retrieval reads that row, sees \texttt{AES-256-GCM} + version \texttt{3}, fetches key
+version 3, and decrypts — \emph{even if the active algorithm has since changed to ChaCha20}. That
+single end-to-end path is the whole product in miniature.
+
+% =====================================================================
+\section{Glossary (quick reference)}
+% =====================================================================
+
+\begin{description}[leftmargin=0pt,style=nextline]
+  \item[API] A set of endpoints your frontend (or other programs) call to use your backend.
+  \item[Bean] An object Spring creates and manages for you.
+  \item[Ciphertext] Encrypted, unreadable data. Plaintext is the readable original.
+  \item[Crypto-agility] Ability to change encryption algorithm via config, not code rewrites.
+  \item[DI / IoC] Spring supplies your objects' dependencies instead of you creating them.
+  \item[Entity] A Java class mapped to a database table (via JPA/Hibernate).
+  \item[GCM] Authenticated mode of AES; gives confidentiality + tamper detection.
+  \item[Hash] One-way scramble; used to store passwords safely (bcrypt).
+  \item[JWT] Signed token proving a user is logged in, sent on every request.
+  \item[Nonce / IV] Unique-per-encryption value; must never repeat under one key.
+  \item[RBAC] Permissions granted via roles (admin/user).
+  \item[Repository] Interface that talks to the database; Spring implements it.
+  \item[Transaction] A group of DB changes that all succeed or all fail (ACID).
+\end{description}
+
+\vspace{1em}
+\begin{tcolorbox}[colback=accent!5,colframe=accent!50]
+\textbf{You are ready.} Read Part by part as you build. When you reach the Crypto Engine phase,
+re-read Section 9 carefully — the nonce rule and the "encrypt-active / decrypt-stored" idea are the
+two things that, if you get them right, make the whole project click.
+\end{tcolorbox}
+
+\end{document}
