@@ -120,6 +120,14 @@ Each phase: **Goal → Tasks → Done when (verification)**. Time estimates are 
 
 **Done when:** Register a user (Postman) → get JWT. Login → get JWT. Logout → token rejected on next call. Wrong password → 401 with a generic message.
 
+> **Phase 2 decisions (locked 2026-06-20):**
+> - **Auth wiring:** manual auth inside `AuthService` (no `UserDetailsService`/`AuthenticationManager` yet — JWT filter + RBAC are Phase 3). Remove the leftover `httpBasic` from Phase 0 `SecurityConfig`.
+> - **JWT:** HMAC-SHA256; claims `userId`, `role`, `jti`, `exp`. Secret from `cryptovault.jwt.secret` (env-overridable, dev default in `application.yml`). **1-hour** access token; no refresh tokens in the MVP.
+> - **Logout:** reads `Authorization` header directly (no filter yet) and blacklists the token's `jti` in Redis with TTL = remaining lifetime (`bl:jti:<id>`).
+> - **Errors:** login is **generic 401** for unknown-email *and* wrong-password (no existence leak); register returns **409** on duplicate email (unavoidable for signup). Validation → 400. Passwords/hashes/tokens never logged.
+> - **Default role:** `USER` (uppercase, matches the V2 seed).
+> - **Design spec:** `docs/superpowers/specs/2026-06-20-phase2-authentication-core-design.md`.
+
 ---
 
 ### Phase 3 — Security Filter & RBAC  ·  ~1 week

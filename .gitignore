@@ -15,6 +15,8 @@ target/
 
 # --- Logs / runtime artifacts ---
 *.log
+backend/app.log
+backend/verify-run.log
 
 # --- OS / OneDrive junk ---
 .DS_Store
