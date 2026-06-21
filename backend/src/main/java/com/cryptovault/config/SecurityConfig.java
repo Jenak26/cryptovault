@@ -2,10 +2,11 @@ package com.cryptovault.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
@@ -19,6 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
  *    session cookies). Protection comes from the JWT, added later.
  *  - SessionCreationPolicy.STATELESS: the server keeps no session; each request must
  *    carry its own proof of identity (a JWT). This is standard for REST APIs.
+ *  - httpBasic was removed (it was a Phase 0 placeholder); auth is now via JWT.
  */
 @Configuration
 @EnableWebSecurity
@@ -32,8 +34,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health", "/actuator/health", "/api/auth/**").permitAll()
                         .anyRequest().authenticated()
-                )
-                .httpBasic(Customizer.withDefaults());
+                );
         return http.build();
+    }
+
+    /** Password hashing for register/login. BCrypt with the default strength (10). */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }
