@@ -1,8 +1,16 @@
 # Phase 2 — Authentication Core: Design
 
-> **Status:** Approved 2026-06-20
+> **Status:** Approved 2026-06-20 · **Updated 2026-06-21:** JWT filter + protected `/api/me` pulled
+> into Phase 2 so logout enforcement is real (see "Scope amendment" below).
 > **Phase:** 2 of the CryptoVault MVP (`docs/PLAN.md` §4)
-> **Goal:** Register, login, and logout working with bcrypt-hashed passwords, JWTs, and a Redis token blacklist.
+> **Goal:** Register, login, and logout working with bcrypt-hashed passwords, JWTs, and a Redis token blacklist — with bearer tokens validated and rejected on protected routes.
+
+## Scope amendment (2026-06-21)
+
+The original split deferred the JWT validation filter to Phase 3, but Phase 2's acceptance criterion
+("logout → token rejected on next call") cannot be verified without it — and a blacklist nothing reads
+is untestable. So the **basic `JwtAuthFilter`, a `JwtAuthEntryPoint` (401), and one protected endpoint
+`GET /api/me`** are part of Phase 2. Phase 3 is re-scoped to **RBAC (`@PreAuthorize`) + rate limiting**.
 
 ---
 

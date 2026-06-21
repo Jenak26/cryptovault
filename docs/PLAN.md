@@ -107,37 +107,48 @@ Each phase: **Goal → Tasks → Done when (verification)**. Time estimates are 
 
 ---
 
-### Phase 2 — Authentication Core  ·  ~1.5 weeks
-**Goal:** Register, login, logout working with hashed passwords and JWTs.
-- `UserRepository.findByEmail`.
+### Phase 2 — Authentication Core (incl. JWT filter)  ·  ~1.5 weeks
+**Goal:** Register, login, logout working with hashed passwords and JWTs — and bearer tokens actually
+validated/rejected on protected routes (so "logout → token rejected" is real, not deferred).
+- `UserRepository.findByEmail` / `existsByEmail`; `RoleRepository.findByName`.
 - `AuthService`:
-  - **register** → validate input, bcrypt-hash password, insert user (default role `user`), issue JWT.
+  - **register** → validate input, bcrypt-hash password, insert user (default role `USER`), issue JWT.
   - **login** → look up by email, `BCryptPasswordEncoder.matches`, issue JWT. *Never reveal whether the email exists.*
   - **logout** → blacklist the token's `jti` in Redis with TTL = remaining token lifetime.
 - `JwtService` (using `jjwt`): create token (claims: `userId`, `role`, `jti`, `exp`), validate signature + expiry.
+- `JwtAuthFilter` (extends `OncePerRequestFilter`): read `Authorization: Bearer`, validate, check the
+  Redis blacklist, set the Spring Security context with authority `ROLE_<role>`.
+- `JwtAuthEntryPoint`: clean **401** JSON (not 403) for unauthenticated access to protected routes.
+- `SecurityConfig`: stateless, public routes (`/api/health`, `/api/auth/**`), everything else authenticated;
+  `BCryptPasswordEncoder` bean; `httpBasic` removed.
 - `AuthController`: `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/logout`.
+- `MeController`: `GET /api/me` (protected) — proves the filter + blacklist end-to-end.
 - DTOs as Java `record`s; bean validation (`@Email`, `@NotBlank`, min length).
 
-**Done when:** Register a user (Postman) → get JWT. Login → get JWT. Logout → token rejected on next call. Wrong password → 401 with a generic message.
+**Done when:** Register → get JWT. Login → get JWT. `GET /api/me` with that token → 200. Logout → the
+same token on `GET /api/me` → **401 (rejected)**. No token → 401. Wrong password → 401 generic.
 
 > **Phase 2 decisions (locked 2026-06-20):**
-> - **Auth wiring:** manual auth inside `AuthService` (no `UserDetailsService`/`AuthenticationManager` yet — JWT filter + RBAC are Phase 3). Remove the leftover `httpBasic` from Phase 0 `SecurityConfig`.
+> - **Auth wiring:** manual auth inside `AuthService` (no `UserDetailsService`/`AuthenticationManager`).
 > - **JWT:** HMAC-SHA256; claims `userId`, `role`, `jti`, `exp`. Secret from `cryptovault.jwt.secret` (env-overridable, dev default in `application.yml`). **1-hour** access token; no refresh tokens in the MVP.
-> - **Logout:** reads `Authorization` header directly (no filter yet) and blacklists the token's `jti` in Redis with TTL = remaining lifetime (`bl:jti:<id>`).
+> - **Logout/enforcement:** logout blacklists the token's `jti` (`bl:jti:<id>`, TTL = remaining lifetime); the `JwtAuthFilter` checks that blacklist on every request, so a logged-out token is rejected. *(The basic filter was pulled forward from the original Phase 3 — see note below — so Phase 2's own "token rejected" criterion is actually testable. The blacklist is meaningless without something that reads it.)*
 > - **Errors:** login is **generic 401** for unknown-email *and* wrong-password (no existence leak); register returns **409** on duplicate email (unavoidable for signup). Validation → 400. Passwords/hashes/tokens never logged.
 > - **Default role:** `USER` (uppercase, matches the V2 seed).
 > - **Design spec:** `docs/superpowers/specs/2026-06-20-phase2-authentication-core-design.md`.
 
 ---
 
-### Phase 3 — Security Filter & RBAC  ·  ~1 week
-**Goal:** Protected endpoints; admin-only routes enforced.
-- `JwtAuthFilter` (extends `OncePerRequestFilter`): read `Authorization: Bearer`, validate, check Redis blacklist, set the Spring Security context.
-- `SecurityConfig`: stateless session, public routes (`/api/auth/**`, `/api/health`), everything else authenticated.
-- Enable `@PreAuthorize`; mark admin routes `hasRole('ADMIN')`.
+### Phase 3 — RBAC & Rate Limiting  ·  ~1 week
+**Goal:** Role-based authorization and brute-force protection on top of Phase 2's JWT filter.
+> *Scope change (2026-06-20):* the basic `JwtAuthFilter` + stateless `SecurityConfig` + the generic
+> "no token → 401" check moved **into Phase 2**, because Phase 2's acceptance criterion ("logout →
+> token rejected") cannot be verified without them. Phase 3 is now RBAC + rate limiting only.
+- Enable method security (`@EnableMethodSecurity`); mark admin routes `@PreAuthorize("hasRole('ADMIN')")`.
+- Add at least one admin-only endpoint to exercise role separation (e.g. an admin ping, ahead of the
+  real admin endpoints in Phases 5/7).
 - `RateLimiter` (Redis counter) on login: block after N failures per IP/email window.
 
-**Done when:** Calling a protected route without a token → 401. A `user` token on an admin route → 403. An `admin` token → 200. 6th rapid bad login → rate-limited.
+**Done when:** A `user` token on an admin route → 403. An `admin` token → 200. 6th rapid bad login → rate-limited.
 
 ---
 
