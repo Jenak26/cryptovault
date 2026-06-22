@@ -65,7 +65,7 @@ class AuthControllerTest {
 
     @Test
     void loginWithWrongCredentialsReturnsGeneric401() throws Exception {
-        when(auth.login(any())).thenThrow(new InvalidCredentialsException());
+        when(auth.login(any(), any())).thenThrow(new InvalidCredentialsException());
 
         mvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

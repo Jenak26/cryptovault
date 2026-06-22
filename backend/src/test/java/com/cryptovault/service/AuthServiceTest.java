@@ -18,6 +18,7 @@ import com.cryptovault.exception.InvalidCredentialsException;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
 import com.cryptovault.security.JwtService;
+import com.cryptovault.security.LoginRateLimiter;
 import com.cryptovault.security.TokenBlacklist;
 import io.jsonwebtoken.Claims;
 import java.time.Duration;
@@ -46,6 +47,8 @@ class AuthServiceTest {
     private JwtService jwt;
     @Mock
     private TokenBlacklist blacklist;
+    @Mock
+    private LoginRateLimiter rateLimiter;
 
     @InjectMocks
     private AuthService auth;
@@ -95,6 +98,7 @@ class AuthServiceTest {
         AuthResponse response = auth.login(new LoginRequest("a@b.com", "password123"));
 
         assertThat(response.token()).isEqualTo("token-123");
+        verify(rateLimiter).reset("a@b.com", "127.0.0.1");
     }
 
     @Test
@@ -103,6 +107,7 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> auth.login(new LoginRequest("missing@b.com", "password123")))
                 .isInstanceOf(InvalidCredentialsException.class);
+        verify(rateLimiter).recordFailure("missing@b.com", "127.0.0.1");
     }
 
     @Test
@@ -114,6 +119,17 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> auth.login(new LoginRequest("a@b.com", "wrongpass")))
                 .isInstanceOf(InvalidCredentialsException.class);
+        verify(rateLimiter).recordFailure("a@b.com", "127.0.0.1");
+    }
+
+    @Test
+    void loginBlocksWhenRateLimitExceeded() {
+        when(rateLimiter.isBlocked("blocked@b.com", "127.0.0.1")).thenReturn(true);
+
+        assertThatThrownBy(() -> auth.login(new LoginRequest("blocked@b.com", "password123")))
+                .isInstanceOf(com.cryptovault.exception.TooManyRequestsException.class);
+
+        verify(users, never()).findByEmail(any());
     }
 
     @Test
