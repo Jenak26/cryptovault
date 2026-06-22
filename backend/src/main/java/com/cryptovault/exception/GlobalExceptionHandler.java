@@ -59,4 +59,11 @@ public class GlobalExceptionHandler {
     public Map<String, String> handleJwt(JwtException ex) {
         return Map.of("error", "Missing or invalid token");
     }
+
+    /** Rate limit exceeded. */
+    @ExceptionHandler(TooManyRequestsException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public Map<String, String> handleTooManyRequests(TooManyRequestsException ex) {
+        return Map.of("error", ex.getMessage());
+    }
 }

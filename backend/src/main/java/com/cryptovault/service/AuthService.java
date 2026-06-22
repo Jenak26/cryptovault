@@ -7,9 +7,11 @@ import com.cryptovault.entity.Role;
 import com.cryptovault.entity.User;
 import com.cryptovault.exception.EmailAlreadyExistsException;
 import com.cryptovault.exception.InvalidCredentialsException;
+import com.cryptovault.exception.TooManyRequestsException;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
 import com.cryptovault.security.JwtService;
+import com.cryptovault.security.LoginRateLimiter;
 import com.cryptovault.security.TokenBlacklist;
 import io.jsonwebtoken.Claims;
 import java.time.Duration;
@@ -36,14 +38,16 @@ public class AuthService {
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final TokenBlacklist blacklist;
+    private final LoginRateLimiter rateLimiter;
 
     public AuthService(UserRepository users, RoleRepository roles, PasswordEncoder encoder,
-                       JwtService jwt, TokenBlacklist blacklist) {
+                       JwtService jwt, TokenBlacklist blacklist, LoginRateLimiter rateLimiter) {
         this.users = users;
         this.roles = roles;
         this.encoder = encoder;
         this.jwt = jwt;
         this.blacklist = blacklist;
+        this.rateLimiter = rateLimiter;
     }
 
     @Transactional
@@ -69,15 +73,29 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
-        // Same exception for unknown email and wrong password — no existence leak.
-        // @Transactional keeps the persistence context open so the lazy Role can be read.
-        User user = users.findByEmail(request.email())
-                .orElseThrow(InvalidCredentialsException::new);
-        if (!encoder.matches(request.password(), user.getPasswordHash())) {
-            throw new InvalidCredentialsException();
+        return login(request, "127.0.0.1");
+    }
+
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request, String ip) {
+        if (rateLimiter.isBlocked(request.email(), ip)) {
+            throw new TooManyRequestsException("Too many login attempts. Please try again later.");
         }
-        String token = jwt.generateToken(user.getId(), user.getRole().getName());
-        return new AuthResponse(token);
+        try {
+            // Same exception for unknown email and wrong password — no existence leak.
+            // @Transactional keeps the persistence context open so the lazy Role can be read.
+            User user = users.findByEmail(request.email())
+                    .orElseThrow(InvalidCredentialsException::new);
+            if (!encoder.matches(request.password(), user.getPasswordHash())) {
+                throw new InvalidCredentialsException();
+            }
+            rateLimiter.reset(request.email(), ip);
+            String token = jwt.generateToken(user.getId(), user.getRole().getName());
+            return new AuthResponse(token);
+        } catch (InvalidCredentialsException ex) {
+            rateLimiter.recordFailure(request.email(), ip);
+            throw ex;
+        }
     }
 
     /**

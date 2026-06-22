@@ -4,6 +4,7 @@ import com.cryptovault.dto.AuthResponse;
 import com.cryptovault.dto.LoginRequest;
 import com.cryptovault.dto.RegisterRequest;
 import com.cryptovault.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,8 +36,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return auth.login(request);
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        String ip = getClientIp(servletRequest);
+        return auth.login(request, ip);
     }
 
     @PostMapping("/logout")
@@ -46,5 +48,13 @@ public class AuthController {
                 ? authorizationHeader.substring(BEARER_PREFIX.length())
                 : authorizationHeader;
         auth.logout(token);
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String xf = request.getHeader("X-Forwarded-For");
+        if (xf != null && !xf.isEmpty()) {
+            return xf.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }
