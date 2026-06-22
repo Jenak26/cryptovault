@@ -44,3 +44,9 @@ cryptovault:
     # The currently ACTIVE algorithm for NEW encryptions (crypto-agility switch).
     # Old records keep decrypting with whatever algorithm they were stored under.
     active-algorithm: AES-256-GCM
+  jwt:
+    # HMAC-SHA256 signing secret. Dev default lets the app run out of the box; override in
+    # production via the CRYPTOVAULT_JWT_SECRET env var. Must be >= 32 bytes for HS256.
+    secret: ${CRYPTOVAULT_JWT_SECRET:dev-only-change-me-min-32-bytes-secret-key-1234567890}
+    # Access-token lifetime in minutes. Single token, no refresh tokens in the MVP.
+    expiration-minutes: 60

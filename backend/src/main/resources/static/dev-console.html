@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!--
+  DEV-ONLY auth test console for Phase 2. Not part of the product (the real UI is Phase 8).
+  Served by Spring Boot at http://localhost:8081/dev-console.html
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CryptoVault — Auth Dev Console (Phase 2)</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0; background: #0b0f17; color: #e6edf3; line-height: 1.5;
+      display: flex; justify-content: center; padding: 32px 16px;
+    }
+    .wrap { width: 100%; max-width: 560px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #8b949e; font-size: 13px; margin: 0 0 24px; }
+    .card { background: #11161f; border: 1px solid #222c3a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: #8b949e; margin: 0 0 4px; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #2c3a4d;
+      background: #0b0f17; color: #e6edf3; font-size: 14px; margin-bottom: 12px;
+    }
+    input:focus { outline: none; border-color: #3b82f6; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      flex: 1; min-width: 120px; padding: 10px 14px; border-radius: 8px; border: 0;
+      font-size: 14px; font-weight: 600; cursor: pointer; color: #fff;
+    }
+    .register { background: #2563eb; }
+    .login { background: #059669; }
+    .logout { background: #b45309; }
+    button:hover { filter: brightness(1.1); }
+    .status { font-size: 13px; margin: 12px 0 0; min-height: 18px; }
+    .ok { color: #34d399; }
+    .err { color: #f87171; }
+    pre {
+      background: #06090f; border: 1px solid #222c3a; border-radius: 8px; padding: 12px;
+      font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 8px 0 0;
+    }
+    .token { font-size: 11px; color: #8b949e; margin-top: 8px; word-break: break-all; }
+    .pill { display:inline-block; font-size:11px; background:#1f2937; color:#9ca3af; padding:2px 8px; border-radius:999px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>CryptoVault — Auth Dev Console <span class="pill">Phase 2</span></h1>
+    <p class="sub">Talks to the live backend at <code>/api/auth</code>. Dev tool only — the real UI is Phase 8.</p>
+
+    <div class="card">
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com" />
+      <label>Password (min 8 chars)</label>
+      <input id="password" type="password" placeholder="password123" value="password123" />
+      <div class="row">
+        <button class="register" onclick="call('register')">Register</button>
+        <button class="login" onclick="call('login')">Login</button>
+        <button class="logout" onclick="doLogout()">Logout</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="me" onclick="callMe()" style="background:#7c3aed;">Call /api/me (protected)</button>
+      </div>
+      <p id="status" class="status"></p>
+      <pre id="output">// responses appear here</pre>
+      <div id="tokenBox" class="token"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentToken = null;
+
+    // Default to a fresh unique email so Register always works on first try.
+    document.getElementById('email').value = 'demo+' + Date.now() + '@example.com';
+
+    function show(status, ok, data) {
+      const s = document.getElementById('status');
+      s.textContent = status;
+      s.className = 'status ' + (ok ? 'ok' : 'err');
+      document.getElementById('output').textContent =
+        typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
+
+    async function call(kind) {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        const res = await fetch('/api/auth/' + kind, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const text = await res.text();
+        let data; try { data = JSON.parse(text); } catch { data = text || '(empty body)'; }
+        const ok = res.ok;
+        show('HTTP ' + res.status + (ok ? ' OK' : ' (rejected)'), ok, data);
+        if (ok && data && data.token) {
+          currentToken = data.token;
+          document.getElementById('tokenBox').textContent = 'Saved token: ' + data.token;
+        }
+      } catch (e) {
+        show('Network error — is the app running on :8081?', false, String(e));
+      }
+    }
+
+    async function callMe() {
+      if (!currentToken) { show('No token yet — Register or Login first.', false, '(no token)'); return; }
+      try {
+        const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + currentToken } });
+        const text = await res.text();
+        let data; try { data = JSON.parse(text); } catch { data = text || '(empty body)'; }
+        const note = res.ok
+          ? ' OK — token accepted'
+          : ' — token rejected (this is expected AFTER logout)';
+        show('HTTP ' + res.status + note, res.ok, data);
+      } catch (e) {
+        show('Network error — is the app running on :8081?', false, String(e));
+      }
+    }
+
+    async function doLogout() {
+      if (!currentToken) { show('No token yet — Register or Login first.', false, '(no token)'); return; }
+      try {
+        const res = await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + currentToken }
+        });
+        const text = await res.text();
+        show('HTTP ' + res.status + (res.ok ? ' OK — jti blacklisted in Redis' : ' (rejected)'),
+             res.ok, text || '(empty body — logout returns 200 with no body)');
+      } catch (e) {
+        show('Network error — is the app running on :8081?', false, String(e));
+      }
+    }
+  </script>
+</body>
+</html>

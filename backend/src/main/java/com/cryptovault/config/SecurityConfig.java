@@ -1,28 +1,42 @@
 package com.cryptovault.config;
 
+import com.cryptovault.security.JwtAuthEntryPoint;
+import com.cryptovault.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
- * Phase 0 security baseline.
+ * Security configuration.
  *
- * For now this only opens up the public endpoints (health + auth) and locks down
- * everything else. The real JWT filter and role rules arrive in Phase 3.
+ * <ul>
+ *   <li>CSRF disabled: stateless JSON API (no browser form posts / session cookies); the JWT is the
+ *       proof of identity.</li>
+ *   <li>STATELESS sessions: the server keeps no session; every request carries its own token.</li>
+ *   <li>{@link JwtAuthFilter} runs before the username/password filter, validates the bearer token,
+ *       checks the Redis blacklist, and authenticates the request.</li>
+ *   <li>{@link JwtAuthEntryPoint} returns a clean 401 (not 403) on unauthenticated access.</li>
+ * </ul>
  *
- * Notes:
- *  - CSRF is disabled because this is a stateless JSON API (no browser form posts /
- *    session cookies). Protection comes from the JWT, added later.
- *  - SessionCreationPolicy.STATELESS: the server keeps no session; each request must
- *    carry its own proof of identity (a JWT). This is standard for REST APIs.
+ * <p>Role-based authorization rules (RBAC) and login rate-limiting arrive in Phase 3.
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
+    private final JwtAuthEntryPoint jwtAuthEntryPoint;
+
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter, JwtAuthEntryPoint jwtAuthEntryPoint) {
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.jwtAuthEntryPoint = jwtAuthEntryPoint;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -30,10 +44,19 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/health", "/actuator/health", "/api/auth/**").permitAll()
+                        // Public: liveness, auth endpoints, and the dev-only test console.
+                        .requestMatchers("/api/health", "/actuator/health", "/api/auth/**",
+                                "/dev-console.html").permitAll()
                         .anyRequest().authenticated()
                 )
-                .httpBasic(Customizer.withDefaults());
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthEntryPoint))
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    /** Password hashing for register/login. BCrypt with the default strength (10). */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }
