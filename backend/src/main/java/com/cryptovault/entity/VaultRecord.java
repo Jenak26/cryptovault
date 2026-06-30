@@ -41,6 +41,9 @@ public class VaultRecord {
     @Column(name = "encrypted_data", nullable = false, columnDefinition = "MEDIUMBLOB")
     private byte[] encryptedData;
 
+    @Column(name = "name", nullable = false, length = 255)
+    private String name;
+
     @Column(name = "algorithm_used", nullable = false, length = 50)
     private String algorithmUsed;
 
