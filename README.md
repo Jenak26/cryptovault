@@ -10,7 +10,7 @@ CryptoVault is a crypto-agile secrets storage engine that implements, from scrat
 
 > **Scope honesty:** this is a learning-grade implementation of production patterns, not a drop-in replacement for a real KMS/HSM. See [`SECURITY.md`](SECURITY.md) for the threat model and an explicit list of simplifications (e.g. the master secret lives in an environment variable here, where production would use AWS KMS / HashiCorp Vault / a hardware HSM).
 
-**🔗 Live demo:** _add your deployed URL here_ · One-click deploy steps in [`DEPLOYMENT.md`](DEPLOYMENT.md) (Railway backend + MySQL + Redis, Vercel frontend).
+**🔗 Live demo:** **[cryptovault-beige-beta.vercel.app](https://cryptovault-beige-beta.vercel.app)** — register, store an encrypted secret, and enable TOTP MFA. _(Hosted on free tiers; the first request after idle can take ~50s to wake.)_ Deploy steps in [`DEPLOYMENT.md`](DEPLOYMENT.md) (Render backend + Aiven MySQL + Upstash Redis + Vercel frontend).
 
 ---
 
