@@ -3,6 +3,10 @@
 thingsToknow.pdf
 phase-reports/
 
+# --- Secrets / env files (never commit) ---
+.env
+*.env
+
 # --- IDE / editor ---
 .vscode/
 .idea/
