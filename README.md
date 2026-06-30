@@ -17,7 +17,7 @@ CryptoVault is a crypto-agile secrets storage engine that implements, from scrat
 ## Key Features
 
 - 🛡️ **Crypto-Agility**: Dynamically swap the active encryption algorithm between `AES-256-GCM` and `ChaCha20-Poly1305` from a single config switch — no code changes, and legacy records keep decrypting under whatever algorithm they were written with.
-- 🔑 **Envelope Encryption**: Data keys are wrapped (encrypted) using a Master Key (KEK) derived via SHA-256 hashing of a high-entropy secret held in an environment variable. Raw key material is never stored in plaintext in the database.
+- 🔑 **Envelope Encryption**: Data keys are wrapped (encrypted) using a Master Key (KEK) derived via **HKDF-SHA256** from a high-entropy secret held in an environment variable. Raw key material is never stored in plaintext in the database.
 - 🔄 **Key Rotation & Migration**: Administrators rotate data keys at the click of a button (`POST /api/admin/rotate-key`) and kick off a background re-encryption pass (`POST /api/admin/re-encrypt`) to migrate legacy records onto the active key version and cipher.
 - 🔐 **JWT Auth + Hard Logout**: Stateless HMAC-SHA256 access tokens (`userId`, `role`, `jti`, `exp`). Logout blacklists the token's `jti` in Redis for its remaining lifetime, and the `JwtAuthFilter` rejects it on every subsequent request — so "logged out" actually means rejected, not merely forgotten.
 - 👮 **Role-Based Access Control**: Method-level security (`@PreAuthorize("hasRole('ADMIN')")`) separates `USER` and `ADMIN` capabilities; admin-only routes return a clean `403` to ordinary users.
@@ -71,7 +71,7 @@ flowchart TD
 ```text
   [ CRYPTOVAULT_MASTER_SECRET ] (Env Variable)
               │
-              ▼ (SHA-256 Hashing)
+              ▼ (HKDF-SHA256)
       [ Wrap Master KEK ]
               │
               ├─────── Wrap / Unwrap ───────┐
