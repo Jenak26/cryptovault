@@ -14,6 +14,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, initialMode = 'login' }) 
   const [password, setPassword] = useState('');
   const [mfaToken, setMfaToken] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [useBackupCode, setUseBackupCode] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -28,6 +29,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, initialMode = 'login' }) 
     setStep('credentials');
     setMfaToken('');
     setMfaCode('');
+    setUseBackupCode(false);
     setError('');
   };
 
@@ -90,19 +92,37 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, initialMode = 'login' }) 
         <form onSubmit={handleSubmit}>
           {step === 'mfa' ? (
             <div className="form-group" style={{ marginBottom: '28px' }}>
-              <label className="form-label">Authentication Code</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="form-input"
-                placeholder="123456"
-                maxLength={6}
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
-                autoFocus
-                required
-              />
+              <label className="form-label">{useBackupCode ? 'Backup Code' : 'Authentication Code'}</label>
+              {useBackupCode ? (
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  className="form-input"
+                  placeholder="ABCDE-FGHJK"
+                  maxLength={11}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+                  autoFocus
+                  required
+                />
+              ) : (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="form-input"
+                  placeholder="123456"
+                  maxLength={6}
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                  autoFocus
+                  required
+                />
+              )}
+              <a href="#" style={{ display: 'inline-block', marginTop: '10px', fontSize: '13px' }}
+                onClick={(e) => { e.preventDefault(); setUseBackupCode(!useBackupCode); setMfaCode(''); setError(''); }}>
+                {useBackupCode ? 'Use authenticator code instead' : 'Use a backup code instead'}
+              </a>
             </div>
           ) : (
             <>
