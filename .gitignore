@@ -1,6 +1,7 @@
 # --- Personal / local (not for the shared repo) ---
 .claude/
 thingsToknow.pdf
+phase-reports/
 
 # --- IDE / editor ---
 .vscode/
