@@ -18,6 +18,7 @@ import com.cryptovault.exception.InvalidCredentialsException;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
 import com.cryptovault.security.JwtService;
+import com.cryptovault.security.RateLimiter;
 import com.cryptovault.security.TokenBlacklist;
 import io.jsonwebtoken.Claims;
 import java.time.Duration;
@@ -46,6 +47,10 @@ class AuthServiceTest {
     private JwtService jwt;
     @Mock
     private TokenBlacklist blacklist;
+    @Mock
+    private RateLimiter rateLimiter;
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private AuthService auth;

@@ -35,8 +35,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
-        return auth.login(request);
+    public AuthResponse login(@Valid @RequestBody LoginRequest request, jakarta.servlet.http.HttpServletRequest httpRequest) {
+        String ipAddress = httpRequest.getRemoteAddr();
+        String xForwardedFor = httpRequest.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            ipAddress = xForwardedFor.split(",")[0].trim();
+        }
+        return auth.login(request, ipAddress);
     }
 
     @PostMapping("/logout")
