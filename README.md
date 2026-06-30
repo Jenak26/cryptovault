@@ -1,34 +1,68 @@
-# CryptoVault — Enterprise Cryptographic Vault
+# 🔐 CryptoVault — Enterprise Cryptographic Vault
 
 [![CI](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml/badge.svg)](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml)
+&nbsp;![Java](https://img.shields.io/badge/Java-21-orange)
+&nbsp;![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-green)
+&nbsp;![React](https://img.shields.io/badge/React-19-blue)
+&nbsp;![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-### Technologies used: Java 21, Spring Boot 3, Spring Security, Spring Data JPA, Hibernate, Flyway Migrations, MySQL 8, Redis 7, Bouncy Castle Provider, JWT (jjwt), Testcontainers, JUnit 5, Mockito, OpenAPI / Swagger UI, React 19, TypeScript, Vite, Vanilla CSS
+### Technologies used: Java 21 · Spring Boot 3 · Spring Security · Spring Data JPA · Hibernate · Flyway · MySQL 8 · Redis 7 · Bouncy Castle · JWT (jjwt) · HKDF / AES-256-GCM / ChaCha20-Poly1305 · RFC 6238 TOTP · JUnit 5 · Mockito · AssertJ · Testcontainers · OpenAPI / Swagger · React 19 · TypeScript · Vite · Axios · Docker · GitHub Actions · Render · Aiven · Upstash · Vercel
 
----
-
-CryptoVault is a crypto-agile secrets storage engine that implements, from scratch, the patterns a managed KMS/HSM provides — so the mechanics are explicit rather than hidden behind a cloud API. It secures sensitive data at rest using pluggable cryptography strategies, envelope encryption (Key Encrypting Keys wrapping Data Keys), HKDF-derived key material, automated key rotation, and compliance auditing, all accessed via a modern dark-mode React frontend.
-
-> **Scope honesty:** this is a learning-grade implementation of production patterns, not a drop-in replacement for a real KMS/HSM. See [`SECURITY.md`](SECURITY.md) for the threat model and an explicit list of simplifications (e.g. the master secret lives in an environment variable here, where production would use AWS KMS / HashiCorp Vault / a hardware HSM).
-
-**🔗 Live demo:** **[cryptovault-beige-beta.vercel.app](https://cryptovault-beige-beta.vercel.app)** — register, store an encrypted secret, and enable TOTP MFA. _(Hosted on free tiers; the first request after idle can take ~50s to wake.)_ Deploy steps in [`DEPLOYMENT.md`](DEPLOYMENT.md) (Render backend + Aiven MySQL + Upstash Redis + Vercel frontend).
-
----
-
-## Key Features
-
-- 🛡️ **Crypto-Agility**: Dynamically swap the active encryption algorithm between `AES-256-GCM` and `ChaCha20-Poly1305` from a single config switch — no code changes, and legacy records keep decrypting under whatever algorithm they were written with.
-- 🔑 **Envelope Encryption**: Data keys are wrapped (encrypted) using a Master Key (KEK) derived via **HKDF-SHA256** from a high-entropy secret held in an environment variable. Raw key material is never stored in plaintext in the database.
-- 🔄 **Key Rotation & Migration**: Administrators rotate data keys at the click of a button (`POST /api/admin/rotate-key`) and kick off a background re-encryption pass (`POST /api/admin/re-encrypt`) to migrate legacy records onto the active key version and cipher.
-- 🔐 **JWT Auth + Hard Logout**: Stateless HMAC-SHA256 access tokens (`userId`, `role`, `jti`, `exp`). Logout blacklists the token's `jti` in Redis for its remaining lifetime, and the `JwtAuthFilter` rejects it on every subsequent request — so "logged out" actually means rejected, not merely forgotten.
-- 🔒 **TOTP Multi-Factor Auth**: Optional, per-user two-factor authentication built from scratch to RFC 6238 (no library). When enabled, login becomes two-step — the password step returns a short-lived single-use challenge and the JWT is only issued after a valid authenticator code. Compatible with Google Authenticator, Authy, and 1Password. Enrolment issues **one-time recovery codes** (stored hashed) so a lost device doesn't lock you out.
-- 👮 **Role-Based Access Control**: Method-level security (`@PreAuthorize("hasRole('ADMIN')")`) separates `USER` and `ADMIN` capabilities; admin-only routes return a clean `403` to ordinary users.
-- 📊 **Compliance Auditing**: Fully searchable, paginated compliance trails tracking logins, failed auth attempts, registrations, vault reads/writes/deletes, and key rotations — complete with proxy-aware IP capturing and nullable user IDs for failed logins against unknown emails.
-- 🚫 **Brute-Force Protection**: Redis-backed rate limiting tracks failed authentication attempts separately by IP and email, locking abusers out for 15 minutes after 5 failures.
-- 🧪 **Containerized Testing**: 44 unit tests (JUnit 5 + Mockito) plus `Testcontainers` integration tests that spin up real, isolated MySQL 8 and Redis 7 instances during verification builds.
+> **🔗 Live demo → [cryptovault-beige-beta.vercel.app](https://cryptovault-beige-beta.vercel.app)**
+> Register, store an encrypted secret, then enable TOTP MFA with recovery codes. _Hosted on free tiers — the first request after idle can take ~50 s to wake the backend._
 
 ---
 
-## System Architecture
+CryptoVault is a secure, **crypto-agile** secrets-storage engine. It solves the classic problem of protecting sensitive data **at rest** by implementing — from scratch — the patterns a managed KMS/HSM provides: pluggable cryptography, **envelope encryption** (Key-Encrypting-Keys wrapping Data-Keys), HKDF-derived key material, automated **key rotation**, multi-factor authentication, and full **compliance auditing** — all behind a hardened Spring Security gateway and a dark-mode React frontend.
+
+> **🎯 Scope honesty.** This is a *learning-grade* implementation of production patterns, not a drop-in replacement for a real KMS/HSM. The point is to make the mechanics explicit instead of hiding them behind a cloud API. See [`SECURITY.md`](SECURITY.md) for the full threat model and an honest list of simplifications.
+
+---
+
+## 💡 What this project demonstrates
+
+This isn't a CRUD tutorial — it's built to show depth across the stack a fintech/bank backend role cares about:
+
+- **Applied cryptography done correctly** — envelope encryption, AEAD ciphers with per-call random nonces, **HKDF** (not a raw hash) for key derivation, and tamper detection. The reasoning behind each choice is written down as [ADRs](docs/adr/README.md).
+- **Security engineering** — stateless JWT with **real** server-side revocation, RBAC, brute-force rate limiting, generic auth errors (no user enumeration), and a hand-rolled **RFC 6238 TOTP** second factor with one-time recovery codes.
+- **Production data discipline** — schema owned by **Flyway** migrations (never `ddl-auto=update`), `ddl-auto=validate` to catch drift, versioned keys, and soft-deletes for audit integrity.
+- **Testing maturity** — 60+ JUnit 5 / Mockito unit tests **plus Testcontainers integration tests** that boot real MySQL + Redis, all gated by CI on every push.
+- **Full-stack + DevOps delivery** — a typed React SPA, a multi-stage Docker build, GitHub Actions CI, and a **live deployment** across four managed services.
+
+---
+
+## ✨ Key Features
+
+- 🛡️ **Crypto-Agility** — swap the active cipher between `AES-256-GCM` and `ChaCha20-Poly1305` from a single config switch. No code changes, and legacy records keep decrypting under whatever algorithm they were written with.
+- 🔑 **Envelope Encryption** — data keys are wrapped under a Master Key (KEK) derived via **HKDF-SHA256** from a high-entropy secret in an environment variable. Raw key material never touches the database in plaintext.
+- 🔄 **Key Rotation & Migration** — rotate the active data key at the click of a button (`POST /api/admin/rotate-key`) and run a background re-encryption pass (`POST /api/admin/re-encrypt`) to migrate old records onto the new key/cipher.
+- 🔐 **JWT Auth + Hard Logout** — stateless HMAC-SHA256 tokens (`userId`, `role`, `jti`, `exp`); logout blacklists the token's `jti` in Redis for its remaining lifetime, and the filter rejects it on every request. "Logged out" actually means rejected.
+- 🔒 **TOTP Multi-Factor Auth** — optional per-user 2FA built **from scratch** to RFC 6238 (no library). Login becomes two-step, and enrolment issues **one-time recovery codes** (stored hashed) so a lost device can't lock you out. Works with Google Authenticator, Authy, 1Password.
+- 👮 **Role-Based Access Control** — method-level security (`@PreAuthorize("hasRole('ADMIN')")`) separates `USER` and `ADMIN`; admin routes return a clean `403` to ordinary users.
+- 📊 **Compliance Auditing** — paginated, filterable trails of logins, failed attempts, registrations, vault reads/writes/deletes, and key rotations — with proxy-aware IP capture and nullable user IDs for failed logins on unknown emails.
+- 🚫 **Brute-Force Protection** — Redis-backed rate limiting tracks failures separately by IP **and** email, locking out for 15 minutes after 5 failures.
+- 🧪 **Containerized Testing** — JUnit 5 + Mockito unit suites plus `Testcontainers` integration tests that spin up real, isolated MySQL 8 + Redis 7 during the verification build.
+
+---
+
+## 🧰 Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Language & runtime** | Java 21 (Temurin), Node.js 20 |
+| **Backend framework** | Spring Boot 3.5 · Spring Web (REST) · Spring Security · Spring Data JPA / Hibernate · Spring Data Redis |
+| **Cryptography** | HKDF-SHA256 (key derivation) · AES-256-GCM · ChaCha20-Poly1305 (Bouncy Castle) · BCrypt (passwords) · RFC 6238 TOTP + Base32 (hand-rolled) |
+| **Auth & security** | JWT via `jjwt` (HS256) · Redis JWT `jti` blacklist · Redis rate limiter · method-level RBAC |
+| **Persistence** | MySQL 8 (InnoDB, utf8mb4) · Flyway migrations · Redis 7 |
+| **API & docs** | OpenAPI 3 / Swagger UI (springdoc) |
+| **Testing** | JUnit 5 · Mockito · AssertJ · Testcontainers (real MySQL + Redis) |
+| **Build tooling** | Maven (wrapper) · Docker (multi-stage) · Vite · npm · oxlint |
+| **Frontend** | React 19 · TypeScript · Vite · Axios · vanilla CSS |
+| **CI/CD & hosting** | GitHub Actions · Render (backend) · Aiven (MySQL) · Upstash (Redis) · Vercel (frontend) |
+
+---
+
+## 🏛️ System Architecture
 
 ```mermaid
 flowchart TD
@@ -43,7 +77,7 @@ flowchart TD
     end
 
     subgraph Services [Business Core]
-        Auth[AuthService]
+        Auth[AuthService + TOTP MFA]
         Vault[VaultService]
         KeyM[KeyManager]
         ReEnc[ReEncryptionService]
@@ -70,33 +104,62 @@ flowchart TD
 
 ### Cryptographic Key Hierarchy (Envelope Encryption)
 ```text
-  [ CRYPTOVAULT_MASTER_SECRET ] (Env Variable)
+  [ CRYPTOVAULT_MASTER_SECRET ] (Env Variable / would be a KMS/HSM in prod)
               │
-              ▼ (HKDF-SHA256)
-      [ Wrap Master KEK ]
+              ▼ (HKDF-SHA256, salt + domain-separation label)
+      [ Master KEK ]  — derived in memory, never stored
               │
-              ├─────── Wrap / Unwrap ───────┐
-              ▼                             ▼
-      [ Active Data Key v2 ]        [ Retired Data Key v1 ]
-              │                             │
-              ▼ (Encrypts New Data)         ▼ (Decrypts Legacy Data Only)
-       [ Vault Record ]              [ Vault Record ]
+              ├─────── Wrap / Unwrap (AES-256-GCM) ───────┐
+              ▼                                            ▼
+      [ Active Data Key v2 ]                      [ Retired Data Key v1 ]
+              │                                            │
+              ▼ (Encrypts NEW data)                        ▼ (Decrypts LEGACY data only)
+       [ Vault Record ]                             [ Vault Record ]
 ```
 
 ---
 
-## Database Schema
+## ☁️ Deployment & Infrastructure
+
+CryptoVault runs live across four free-tier managed services, deployed straight from this repo. The backend ships as a **multi-stage Docker image**; every connection detail (DB, cache, secrets, CORS, port) is environment-driven, so the same image runs locally and in the cloud unchanged.
+
+```mermaid
+flowchart LR
+    Dev[git push to main] --> CI[GitHub Actions CI<br/>build · 60+ tests · Testcontainers]
+    CI -->|green| Render
+
+    Browser([Browser]) -->|HTTPS| Vercel[Vercel<br/>React static build]
+    Vercel -->|VITE_API_BASE_URL| Render[Render<br/>Spring Boot · Docker]
+    Render -->|JDBC + TLS| Aiven[(Aiven<br/>MySQL 8)]
+    Render -->|Lettuce + TLS| Upstash[(Upstash<br/>Redis)]
+```
+
+| Concern | Service | Notes |
+|---|---|---|
+| Frontend hosting | **Vercel** | Vite static build; `VITE_API_BASE_URL` points at the backend |
+| Backend hosting | **Render** | Runs `backend/Dockerfile`; honours the injected `PORT`; free instance sleeps when idle |
+| Relational DB | **Aiven for MySQL 8** | Flyway applies all migrations on first boot |
+| Cache / Redis | **Upstash Redis** | JWT blacklist, rate limiter, MFA challenges (TLS) |
+| CI | **GitHub Actions** | Builds + runs unit **and** Testcontainers tests against real MySQL/Redis on every push/PR |
+| Containerisation | **Docker** | Multi-stage build (Maven → JRE), runs as non-root |
+
+Full, click-by-click setup is in **[`DEPLOYMENT.md`](DEPLOYMENT.md)**.
+
+---
+
+## 🗄️ Database Schema
 
 ```mermaid
 erDiagram
     roles ||--o{ users : has
     users ||--o{ vault_records : owns
     users ||--o{ audit_logs : triggers
+    users ||--o{ mfa_backup_codes : holds
     crypto_keys ||--o{ vault_records : encrypts_under
 
     roles {
         UUID id PK
-        VARCHAR name UK "e.g. USER, ADMIN"
+        VARCHAR name UK "USER, ADMIN"
     }
     users {
         UUID id PK
@@ -104,194 +167,199 @@ erDiagram
         VARCHAR password_hash
         UUID role_id FK
         BOOLEAN is_active
-        DATETIME created_at
+        VARCHAR mfa_secret "Base32 TOTP secret, nullable"
+        BOOLEAN mfa_enabled
     }
     crypto_keys {
-        INT id PK "auto-increment version"
+        INT version PK "auto-increment version"
         VARCHAR algorithm "AES or CHACHA20"
-        VARCHAR status "ACTIVE or RETIRED"
+        VARCHAR status "ACTIVE / RETIRED"
         VARBINARY encrypted_key "wrapped key material"
-        DATETIME created_at
     }
     vault_records {
         UUID id PK
         VARCHAR name "secret label"
         VARBINARY encrypted_data
         VARCHAR algorithm_used "strategy tracker"
-        INT crypto_key_id FK
+        INT key_version FK
         UUID user_id FK
-        DATETIME deleted_at "soft delete marker"
-        DATETIME created_at
+        DATETIME deleted_at "soft-delete marker"
     }
     audit_logs {
         BIGINT id PK
-        VARCHAR action "e.g. LOGIN_SUCCESS, VAULT_READ"
+        VARCHAR action "LOGIN_SUCCESS, VAULT_READ, ..."
         VARCHAR ip_address
         UUID user_id FK "nullable for failed logins"
         DATETIME timestamp
     }
+    mfa_backup_codes {
+        BIGINT id PK
+        UUID user_id FK
+        VARCHAR code_hash "SHA-256 of a one-time code"
+        BOOLEAN used
+    }
 ```
 
-The schema is owned by **Flyway migrations** (`backend/src/main/resources/db/migration`), and Hibernate runs with `ddl-auto=validate` — it confirms the entities match the schema but never edits it.
+The schema is **owned by Flyway** (`backend/src/main/resources/db/migration`); Hibernate runs `ddl-auto=validate` to confirm the entities match it but never edits it.
 
 | Migration | Purpose |
 |---|---|
-| `V1__initial_schema.sql` | Five tables + all indexes (InnoDB, utf8mb4) |
+| `V1__initial_schema.sql` | Five core tables + all indexes (InnoDB, utf8mb4) |
 | `V2__seed_roles.sql` | Seeds the `USER` and `ADMIN` roles |
 | `V3__add_encrypted_key_to_crypto_keys.sql` | Wrapped data-key material column |
 | `V4__add_name_to_vault_records.sql` | Human-readable secret label |
+| `V5__add_mfa_to_users.sql` | TOTP secret + `mfa_enabled` flag |
+| `V6__add_mfa_backup_codes.sql` | Hashed one-time recovery codes |
 
 ---
 
-## Project Structure
+## 🗂️ Project Structure
 
 ```
 crypto-vault/
 ├── backend/
-│   ├── docker-compose.yml        # MySQL 8 + Redis 7
+│   ├── Dockerfile                  # multi-stage build (Maven → JRE), non-root
+│   ├── docker-compose.yml          # local MySQL 8 + Redis 7
 │   ├── pom.xml
 │   └── src/main/java/com/cryptovault/
-│       ├── config/               # SecurityConfig, CryptoConfig, OpenApiConfig
-│       ├── controller/           # Auth, Me, Health, Vault, Admin, AdminKey
-│       ├── service/              # AuthService, VaultService, KeyManager,
-│       │                         #   ReEncryptionService, AuditService
-│       ├── crypto/               # CipherStrategy, AesGcm, ChaCha20Poly1305, CryptoEngine
-│       ├── security/             # JwtService, JwtAuthFilter, RateLimiter, TokenBlacklist
-│       ├── entity/               # Role, User, CryptoKey, VaultRecord, AuditLog
-│       ├── repository/           # Spring Data JPA repositories
-│       ├── dto/                  # Request/response records
-│       └── exception/            # GlobalExceptionHandler + typed exceptions
-└── frontend/                     # React 19 + TypeScript + Vite
-    └── src/
-        ├── pages/                # Landing, Login, Dashboard, Vault, Admin
-        └── services/api.ts       # Axios client with JWT interceptor
+│       ├── config/                 # SecurityConfig (+ CORS), CryptoConfig, OpenApiConfig
+│       ├── controller/             # Auth, Mfa, Me, Health, Vault, Admin, AdminKey
+│       ├── service/                # AuthService, VaultService, KeyManager,
+│       │                           #   ReEncryptionService, AuditService
+│       ├── crypto/                 # CipherStrategy, AesGcm, ChaCha20Poly1305, CryptoEngine
+│       ├── security/               # JwtService, JwtAuthFilter, TokenBlacklist, RateLimiter,
+│       │                           #   TotpService, MfaChallengeStore, BackupCodes
+│       ├── entity/ repository/ dto/ exception/
+│       └── resources/db/migration/ # Flyway V1–V6
+├── frontend/                       # React 19 + TypeScript + Vite
+│   └── src/{pages, components, services}/
+├── docs/adr/                       # Architecture Decision Records (the "why")
+├── SECURITY.md                     # threat model + simplifications vs production
+└── DEPLOYMENT.md                   # live-deploy runbook
 ```
 
 ---
 
-## Getting Started
+## 🚀 Run It Locally
 
 ### Prerequisites
-- **Java 21** (Temurin recommended)
-- **Node.js** (v18+)
-- **Docker Desktop**
+- **Java 21** (Temurin recommended) · **Node.js 18+** · **Docker Desktop**
 
-### 1. Run Databases & Caches
-Spin up MySQL 8 and Redis 7 in the background:
+### 1 — Start MySQL + Redis
 ```bash
 cd backend
-docker compose up -d
+docker compose up -d            # MySQL 8 on :3306, Redis 7 on :6379
 ```
 
-### 2. Start the Backend API
-Run the Spring Boot application. On startup, Flyway applies all migrations and the key manager seeds key version 1 if none exists.
+### 2 — Start the backend API
+On boot, Flyway runs every migration and `KeyManager` seeds data-key version 1.
 ```bash
-./mvnw spring-boot:run
+./mvnw spring-boot:run           # http://localhost:8081
 ```
-*Verify Health Status:* `curl http://localhost:8081/api/health` should return `{"status":"UP","service":"cryptovault"}`.
+Health check:
+```bash
+curl http://localhost:8081/api/health
+# {"status":"UP","service":"cryptovault"}
+```
+> Dev defaults in `application.yml` let it boot with zero config. **Override the secrets before deploying anywhere real** (see [Configuration](#-configuration)).
 
-### 3. Start the React Frontend
-Navigate to the `frontend` directory, install packages, and spin up Vite:
+### 3 — Start the frontend
 ```bash
 cd ../frontend
-npm install                   # Installs react, react-dom, axios, etc.
-npm run dev                   # Starts dev server on http://localhost:5173
+npm install
+npm run dev                      # http://localhost:5173
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+### 4 — Try the full flow
+1. **Register** an account, then **log in**.
+2. Store a secret in the **Vault**, then view (decrypt) it.
+3. On the **Dashboard**, enable **2FA** — scan/enter the secret in an authenticator app, confirm, and **save the recovery codes**. Log out and back in; it now asks for a code.
+4. Log out → confirm the old token is rejected.
+
+**Promote yourself to admin** (to see the audit log & key rotation) — registration defaults to `USER`:
+```sql
+UPDATE users SET role_id = (SELECT id FROM roles WHERE name = 'ADMIN')
+WHERE email = 'you@example.com';
+```
+Log out/in to pick up the new role.
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-Sensible dev defaults let the app boot out of the box. **Override these via environment variables before deploying anywhere real** (see `backend/src/main/resources/application.yml`):
+Everything is environment-driven. Defaults are for local dev only.
 
-| Setting | Env Variable | Default | Notes |
+| Setting | Env variable | Default | Notes |
 |---|---|---|---|
-| Master encryption secret | `CRYPTOVAULT_MASTER_SECRET` | `dev-master-secret-...` | Wraps all data keys. Rotate-proof; keep out of source control. |
-| JWT signing secret | `CRYPTOVAULT_JWT_SECRET` | `dev-only-change-me-...` | HMAC-SHA256, must be ≥ 32 bytes. |
-| Active cipher | `cryptovault.crypto.active-algorithm` | `AES-256-GCM` | The crypto-agility switch. Set to `CHACHA20-POLY1305` to change new encryptions. |
-| Token lifetime | `cryptovault.jwt.expiration-minutes` | `60` | Single access token, no refresh tokens in the MVP. |
+| Master encryption secret | `CRYPTOVAULT_MASTER_SECRET` | `dev-master-secret-…` | Derives the KEK. **Permanent** — changing it after data exists makes stored keys unrecoverable. |
+| JWT signing secret | `CRYPTOVAULT_JWT_SECRET` | `dev-only-change-me-…` | HMAC-SHA256, must be ≥ 32 bytes. |
+| Active cipher | `cryptovault.crypto.active-algorithm` | `AES-256-GCM` | Crypto-agility switch; set to `CHACHA20-POLY1305` for new encryptions. |
+| Token lifetime | `cryptovault.jwt.expiration-minutes` | `60` | Single access token, no refresh tokens. |
+| Allowed CORS origins | `CRYPTOVAULT_CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Comma-separated; set to the deployed frontend URL in prod. |
+| DB / Redis | `SPRING_DATASOURCE_*`, `SPRING_DATA_REDIS_*` | local docker | Standard Spring Boot properties. |
 
 ---
 
-## API Reference
+## 📚 API Reference
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/health` | public | Liveness check |
-| `POST` | `/api/auth/register` | public | Create user, bcrypt-hash password, issue JWT |
-| `POST` | `/api/auth/login` | public | Verify credentials; issue JWT or an MFA challenge (generic 401 on failure) |
-| `POST` | `/api/auth/mfa/verify` | public | Complete an MFA login: challenge token + TOTP code → JWT |
+| `POST` | `/api/auth/register` | public | Create user, BCrypt-hash password, issue JWT |
+| `POST` | `/api/auth/login` | public | Verify credentials; issue a JWT **or** an MFA challenge |
+| `POST` | `/api/auth/mfa/verify` | public | Complete MFA login: challenge + TOTP/backup code → JWT |
 | `POST` | `/api/auth/logout` | user | Blacklist the current JWT's `jti` in Redis |
-| `GET` | `/api/me` | user | Current principal + MFA status — proves the filter + blacklist end-to-end |
-| `POST` | `/api/mfa/setup` | user | Begin TOTP enrolment; returns secret + otpauth URI |
-| `POST` | `/api/mfa/enable` | user | Activate MFA after confirming a code; returns one-time backup codes |
+| `GET` | `/api/me` | user | Current principal + MFA status |
+| `POST` | `/api/mfa/setup` | user | Begin TOTP enrolment (secret + otpauth URI) |
+| `POST` | `/api/mfa/enable` | user | Activate MFA; returns one-time backup codes |
 | `POST` | `/api/mfa/backup-codes/regenerate` | user | Re-issue backup codes (invalidates the old set) |
-| `POST` | `/api/mfa/disable` | user | Disable MFA (requires a valid current code) |
+| `POST` | `/api/mfa/disable` | user | Disable MFA (requires a valid code) |
 | `POST` | `/api/vault/store` | user | Encrypt + store a record under the active algorithm/key |
 | `GET` | `/api/vault` | user | List the caller's record metadata |
-| `GET` | `/api/vault/{id}` | owner | Retrieve + decrypt by the record's stored algorithm/key version |
-| `DELETE` | `/api/vault/{id}` | owner | Soft-delete a record (audit integrity) |
-| `GET` | `/api/admin/audit` | admin | Paginated, filterable audit log (`userId`, `action`, `page`, `size`) |
-| `POST` | `/api/admin/rotate-key` | admin | Generate a new active key version; retire the previous |
+| `GET` | `/api/vault/{id}` | owner | Retrieve + decrypt by the record's stored algorithm/version |
+| `DELETE` | `/api/vault/{id}` | owner | Soft-delete a record |
+| `GET` | `/api/admin/audit` | admin | Paginated, filterable audit log |
+| `POST` | `/api/admin/rotate-key` | admin | New active key version; retire the previous |
 | `POST` | `/api/admin/re-encrypt` | admin | Migrate legacy records onto the active key/cipher |
-| `GET` | `/api/admin/ping` | admin | Admin-only liveness probe (exercises RBAC) |
+| `GET` | `/api/admin/ping` | admin | Admin-only probe (exercises RBAC) |
+
+### Interactive docs (Swagger UI)
+Run locally and open **[localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)** (specs at `/v3/api-docs`). Use **Login** to get a JWT, click **Authorize**, paste the token, and every call carries the bearer header.
 
 ---
 
-## API Testing with Swagger UI
+## ✅ Testing
 
-Access the interactive documentation:
-*   **Swagger HTML Interface**: [http://localhost:8081/swagger-ui.html](http://localhost:8081/swagger-ui.html)
-*   **OpenAPI Specs**: [http://localhost:8081/v3/api-docs](http://localhost:8081/v3/api-docs)
-
-To test secure endpoints:
-1. Register/Login using `/api/auth/login` to obtain a JWT.
-2. Click the **Authorize** button at the top-right of Swagger.
-3. Paste the token and click authorize. All subsequent calls will carry the bearer header.
-
----
-
-## Test Executions
-
-### Running Unit Tests
-Executes the unit and mocking suites (44 tests). Does not require Docker:
 ```bash
-cd backend
-./mvnw test -Dtest=*Test
+# Unit + slice tests (no Docker needed)
+cd backend && ./mvnw test -Dtest='*Test'
+
+# Full verification incl. Testcontainers integration tests (needs Docker running)
+cd backend && ./mvnw verify
+
+# Frontend type-check + production build
+cd frontend && npm run build
 ```
 
-### Running Integration Tests
-Executes the containerized integration tests (matching `*IT`) using Testcontainers — **requires Docker Desktop to be running**:
-```bash
-cd backend
-./mvnw verify
-```
-
-### Building the Frontend
-Type-checks and produces a production bundle:
-```bash
-cd frontend
-npm run build
-```
+Every push and PR runs the **same `verify`** in GitHub Actions against real MySQL + Redis service containers, plus the frontend build — so green CI means it genuinely works end-to-end, not just "on my machine."
 
 ---
 
-## Design decisions
+## 🧭 Design Decisions & Security
 
-The **why** behind the significant choices (HKDF, crypto-agility, envelope encryption, JWT
-revocation, from-scratch TOTP, Flyway-owned schema) is recorded as ADRs in
-[`docs/adr/`](docs/adr/README.md). The threat model and simplifications-vs-production live in
-[`SECURITY.md`](SECURITY.md).
+- **[`docs/adr/`](docs/adr/README.md)** — Architecture Decision Records explaining the *why* behind HKDF, crypto-agility, envelope encryption, JWT revocation, from-scratch TOTP, and the Flyway-owned schema.
+- **[`SECURITY.md`](SECURITY.md)** — the key hierarchy, a STRIDE-lite threat model, and an explicit list of simplifications vs. a production KMS/HSM.
 
 ---
 
-## Roadmap
+## 🗺️ Roadmap
 
-The MVP (Phases 0–8) is **complete**: schema, JWT auth with hard logout, RBAC, rate limiting, the pluggable crypto engine, key versioning/rotation, the vault store/retrieve flow, audit logging, and the React UI.
+**Done:** the full MVP (schema, JWT auth + hard logout, RBAC, rate limiting, the pluggable crypto engine, key rotation, vault store/retrieve, audit logging, React UI), **plus** TOTP MFA with backup codes and background re-encryption — all deployed live.
 
-Beyond the MVP, also implemented: **TOTP multi-factor auth with one-time backup codes** (from-scratch RFC 6238) and background **re-encryption** for cipher/key migration.
+**Next:**
+- **V2:** failed-login alerting · admin-driven account recovery
+- **V3:** post-quantum cryptography via Bouncy Castle — ML-KEM, ML-DSA, and hybrid `X25519 + ML-KEM`
 
-Remaining stretch goals:
-- **V2:** failed-login alerting and admin-driven account recovery.
-- **V3:** Post-quantum cryptography via Bouncy Castle — ML-KEM, ML-DSA, and hybrid `X25519 + ML-KEM`.
+---
+
+<p align="center"><i>Built to demonstrate applied cryptography, security engineering, and full-stack delivery — end to end.</i></p>
