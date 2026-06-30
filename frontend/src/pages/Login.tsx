@@ -59,8 +59,13 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, initialMode = 'login' }) 
         }
       }
     } catch (err: any) {
-      if (err.response && err.response.data && err.response.data.error) {
-        setError(err.response.data.error);
+      const data = err.response?.data;
+      if (data?.fields && typeof data.fields === 'object') {
+        // Surface the specific field messages (e.g. "password must be at least 8 characters")
+        const msg = Object.values(data.fields).join(' ');
+        setError(msg.charAt(0).toUpperCase() + msg.slice(1));
+      } else if (data?.error) {
+        setError(data.error);
       } else {
         setError('An unexpected error occurred. Please try again.');
       }
@@ -146,8 +151,14 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, initialMode = 'login' }) 
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  minLength={mode === 'register' ? 8 : undefined}
                   required
                 />
+                {mode === 'register' && (
+                  <span style={{ fontSize: '12.5px', color: 'var(--color-text-muted)' }}>
+                    At least 8 characters.
+                  </span>
+                )}
               </div>
             </>
           )}
