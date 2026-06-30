@@ -107,10 +107,16 @@ function App() {
         {page === 'admin' && <Admin />}
       </main>
 
-      {/* Premium Footer */}
-      <footer style={{ borderTop: '1px solid var(--border-color)', padding: '24px 0', textAlign: 'center', fontSize: '14px', color: 'var(--color-text-muted)', background: '#0a0c14' }}>
-        <div className="app-container">
-          &copy; {new Date().getFullYear()} CryptoVault Financial Technologies Inc. All rights reserved. Secure Banking System.
+      {/* Footer */}
+      <footer style={{ borderTop: '1px solid var(--border-color)', padding: '28px 0', fontSize: '13.5px', color: 'var(--color-text-muted)', background: 'rgba(255,255,255,0.012)' }}>
+        <div className="app-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>
+            <span style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>CryptoVault</span>
+            {' '}— a portfolio project on applied cryptography &amp; security engineering.
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', letterSpacing: '0.04em' }}>
+            Java 21 · Spring Boot · MySQL · Redis · React
+          </span>
         </div>
       </footer>
     </div>
