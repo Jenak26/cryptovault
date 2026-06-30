@@ -11,11 +11,14 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.bouncycastle.crypto.digests.SHA256Digest;
+import org.bouncycastle.crypto.generators.HKDFBytesGenerator;
+import org.bouncycastle.crypto.params.HKDFParameters;
+
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Map;
 import java.util.Optional;
@@ -180,9 +183,27 @@ public class KeyManager {
         return key;
     }
 
-    private byte[] getKek() throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        return digest.digest(masterSecret.getBytes(StandardCharsets.UTF_8));
+    // Domain-separation parameters for KEK derivation. These are non-secret by design:
+    // HKDF's security comes from the high-entropy master secret (the IKM), while the salt
+    // and info label provide the extract-then-expand construction and bind the derived key
+    // to this specific purpose. Fixed (not random) so the KEK re-derives deterministically
+    // on every startup without ever being stored.
+    private static final byte[] KEK_SALT = "cryptovault-hkdf-kek-salt-v1".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] KEK_INFO = "cryptovault-master-kek/aes-256-gcm/v1".getBytes(StandardCharsets.UTF_8);
+
+    /**
+     * Derives the 256-bit Key-Encrypting-Key from the master secret using HKDF-SHA256.
+     *
+     * <p>HKDF (RFC 5869) is the right primitive here because the master secret is high-entropy:
+     * a raw {@code SHA-256(secret)} has no salt and no domain separation. (If the master secret
+     * were a human password instead, this would need a slow, memory-hard KDF such as Argon2id.)
+     */
+    private byte[] getKek() {
+        HKDFBytesGenerator hkdf = new HKDFBytesGenerator(new SHA256Digest());
+        hkdf.init(new HKDFParameters(masterSecret.getBytes(StandardCharsets.UTF_8), KEK_SALT, KEK_INFO));
+        byte[] kek = new byte[32];
+        hkdf.generateBytes(kek, 0, 32);
+        return kek;
     }
 
     private byte[] encryptKey(byte[] rawKey) throws Exception {
