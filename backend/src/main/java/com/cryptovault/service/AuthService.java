@@ -5,21 +5,28 @@ import com.cryptovault.dto.LoginRequest;
 import com.cryptovault.dto.LoginResponse;
 import com.cryptovault.dto.MfaSetupResponse;
 import com.cryptovault.dto.RegisterRequest;
+import com.cryptovault.entity.MfaBackupCode;
 import com.cryptovault.entity.Role;
 import com.cryptovault.entity.User;
 import com.cryptovault.exception.EmailAlreadyExistsException;
 import com.cryptovault.exception.InvalidCredentialsException;
 import com.cryptovault.exception.RateLimitExceededException;
+import com.cryptovault.repository.MfaBackupCodeRepository;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
+import com.cryptovault.security.BackupCodes;
 import com.cryptovault.security.JwtService;
 import com.cryptovault.security.MfaChallengeStore;
 import com.cryptovault.security.RateLimiter;
 import com.cryptovault.security.TokenBlacklist;
 import com.cryptovault.security.TotpService;
 import io.jsonwebtoken.Claims;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -44,11 +51,16 @@ public class AuthService {
     private final AuditService auditService;
     private final TotpService totpService;
     private final MfaChallengeStore mfaChallengeStore;
+    private final MfaBackupCodeRepository backupCodes;
+
+    /** Number of one-time recovery codes issued per (re)generation. */
+    private static final int BACKUP_CODE_COUNT = 10;
+    private final SecureRandom random = new SecureRandom();
 
     public AuthService(UserRepository users, RoleRepository roles, PasswordEncoder encoder,
                        JwtService jwt, TokenBlacklist blacklist, RateLimiter rateLimiter,
                        AuditService auditService, TotpService totpService,
-                       MfaChallengeStore mfaChallengeStore) {
+                       MfaChallengeStore mfaChallengeStore, MfaBackupCodeRepository backupCodes) {
         this.users = users;
         this.roles = roles;
         this.encoder = encoder;
@@ -58,6 +70,7 @@ public class AuthService {
         this.auditService = auditService;
         this.totpService = totpService;
         this.mfaChallengeStore = mfaChallengeStore;
+        this.backupCodes = backupCodes;
     }
 
     @Transactional
@@ -124,24 +137,46 @@ public class AuthService {
     }
 
     /**
-     * Completes an MFA login: validates the challenge token and the TOTP code, then issues the JWT.
-     * Returns the same generic {@link InvalidCredentialsException} on any failure (expired challenge,
-     * wrong/replayed code) so the second step leaks nothing.
+     * Completes an MFA login: validates the challenge token, then either a TOTP code or a one-time
+     * backup code, and issues the JWT. Returns the same generic {@link InvalidCredentialsException}
+     * on any failure (expired challenge, wrong/replayed code) so the second step leaks nothing.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse verifyMfa(String mfaToken, String code, String ipAddress) {
         UUID userId = mfaChallengeStore.consume(mfaToken);
         if (userId == null) {
             throw new InvalidCredentialsException();
         }
         User user = users.findById(userId).orElseThrow(InvalidCredentialsException::new);
-        if (!user.isMfaEnabled() || !totpService.verify(user.getMfaSecret(), code)) {
+        if (!user.isMfaEnabled()) {
             auditService.log(userId, "LOGIN_MFA_FAIL", ipAddress);
             throw new InvalidCredentialsException();
         }
-        auditService.log(userId, "LOGIN_SUCCESS", ipAddress);
+
+        if (totpService.verify(user.getMfaSecret(), code)) {
+            auditService.log(userId, "LOGIN_SUCCESS", ipAddress);
+        } else if (redeemBackupCode(userId, code)) {
+            auditService.log(userId, "LOGIN_MFA_BACKUP", ipAddress);
+        } else {
+            auditService.log(userId, "LOGIN_MFA_FAIL", ipAddress);
+            throw new InvalidCredentialsException();
+        }
+
         String token = jwt.generateToken(user.getId(), user.getRole().getName());
         return new AuthResponse(token);
+    }
+
+    /** Consumes a matching unused backup code, returning true if one was redeemed. */
+    private boolean redeemBackupCode(UUID userId, String code) {
+        Optional<MfaBackupCode> match =
+                backupCodes.findByUserIdAndCodeHashAndUsedFalse(userId, BackupCodes.hash(code));
+        if (match.isEmpty()) {
+            return false;
+        }
+        MfaBackupCode used = match.get();
+        used.setUsed(true);
+        backupCodes.save(used);
+        return true;
     }
 
     /**
@@ -161,9 +196,12 @@ public class AuthService {
         return new MfaSetupResponse(secret, totpService.otpAuthUri(secret, user.getEmail()));
     }
 
-    /** Activates MFA once the user proves they can produce a valid code from the new secret. */
+    /**
+     * Activates MFA once the user proves they can produce a valid code from the new secret, and
+     * returns a fresh set of one-time recovery codes (shown to the user exactly once).
+     */
     @Transactional
-    public void enableMfa(UUID userId, String code) {
+    public List<String> enableMfa(UUID userId, String code) {
         User user = users.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
         if (user.getMfaSecret() == null) {
@@ -175,6 +213,35 @@ public class AuthService {
         user.setMfaEnabled(true);
         users.save(user);
         auditService.log(userId, "MFA_ENABLED", null);
+        return issueBackupCodes(userId);
+    }
+
+    /** Re-issues recovery codes (invalidating the old set); requires a valid current TOTP code. */
+    @Transactional
+    public List<String> regenerateBackupCodes(UUID userId, String code) {
+        User user = users.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        if (!user.isMfaEnabled() || !totpService.verify(user.getMfaSecret(), code)) {
+            throw new InvalidCredentialsException();
+        }
+        auditService.log(userId, "MFA_BACKUP_REGENERATE", null);
+        return issueBackupCodes(userId);
+    }
+
+    /** Clears any existing codes and stores hashes for a fresh set, returning the plaintext codes. */
+    private List<String> issueBackupCodes(UUID userId) {
+        backupCodes.deleteByUserId(userId);
+        List<String> plaintext = new ArrayList<>(BACKUP_CODE_COUNT);
+        for (int i = 0; i < BACKUP_CODE_COUNT; i++) {
+            String code = BackupCodes.generate(random);
+            plaintext.add(code);
+            backupCodes.save(MfaBackupCode.builder()
+                    .userId(userId)
+                    .codeHash(BackupCodes.hash(code))
+                    .used(false)
+                    .build());
+        }
+        return plaintext;
     }
 
     /** Disables MFA; requires a valid current code so a hijacked session can't silently turn it off. */
@@ -187,6 +254,7 @@ public class AuthService {
         }
         user.setMfaEnabled(false);
         user.setMfaSecret(null);
+        backupCodes.deleteByUserId(userId);
         users.save(user);
         auditService.log(userId, "MFA_DISABLED", null);
     }

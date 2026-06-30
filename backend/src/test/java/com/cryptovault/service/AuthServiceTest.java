@@ -3,8 +3,10 @@ package com.cryptovault.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -12,10 +14,12 @@ import com.cryptovault.dto.AuthResponse;
 import com.cryptovault.dto.LoginRequest;
 import com.cryptovault.dto.LoginResponse;
 import com.cryptovault.dto.RegisterRequest;
+import com.cryptovault.entity.MfaBackupCode;
 import com.cryptovault.entity.Role;
 import com.cryptovault.entity.User;
 import com.cryptovault.exception.EmailAlreadyExistsException;
 import com.cryptovault.exception.InvalidCredentialsException;
+import com.cryptovault.repository.MfaBackupCodeRepository;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
 import com.cryptovault.security.JwtService;
@@ -27,6 +31,7 @@ import io.jsonwebtoken.Claims;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -58,6 +63,8 @@ class AuthServiceTest {
     private TotpService totpService;
     @Mock
     private MfaChallengeStore mfaChallengeStore;
+    @Mock
+    private MfaBackupCodeRepository backupCodes;
 
     @InjectMocks
     private AuthService auth;
@@ -161,6 +168,64 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> auth.verifyMfa("gone", "123456", "1.2.3.4"))
                 .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void enableMfaReturnsTenBackupCodes() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).email("a@b.com").role(userRole()).mfaSecret("SECRET").build();
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        when(totpService.verify("SECRET", "123456")).thenReturn(true);
+
+        List<String> codes = auth.enableMfa(userId, "123456");
+
+        assertThat(codes).hasSize(10);
+        assertThat(user.isMfaEnabled()).isTrue();
+        verify(backupCodes).deleteByUserId(userId);
+        verify(backupCodes, times(10)).save(any(MfaBackupCode.class));
+    }
+
+    @Test
+    void verifyMfaAcceptsAndConsumesABackupCode() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).role(userRole()).mfaEnabled(true).mfaSecret("SECRET").build();
+        MfaBackupCode backup = MfaBackupCode.builder().id(1L).userId(userId).codeHash("h").used(false).build();
+        when(mfaChallengeStore.consume("challenge")).thenReturn(userId);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        when(totpService.verify(eq("SECRET"), anyString())).thenReturn(false);
+        when(backupCodes.findByUserIdAndCodeHashAndUsedFalse(eq(userId), anyString())).thenReturn(Optional.of(backup));
+        when(jwt.generateToken(userId, "USER")).thenReturn("tok");
+
+        AuthResponse response = auth.verifyMfa("challenge", "ABCDE-FGHJK", "1.2.3.4");
+
+        assertThat(response.token()).isEqualTo("tok");
+        assertThat(backup.isUsed()).isTrue();
+        verify(backupCodes).save(backup);
+    }
+
+    @Test
+    void regenerateBackupCodesReturnsFreshSetForValidTotp() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).role(userRole()).mfaEnabled(true).mfaSecret("SECRET").build();
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        when(totpService.verify("SECRET", "123456")).thenReturn(true);
+
+        List<String> codes = auth.regenerateBackupCodes(userId, "123456");
+
+        assertThat(codes).hasSize(10);
+        verify(backupCodes).deleteByUserId(userId);
+    }
+
+    @Test
+    void regenerateBackupCodesRejectsBadTotp() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).role(userRole()).mfaEnabled(true).mfaSecret("SECRET").build();
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        when(totpService.verify("SECRET", "000000")).thenReturn(false);
+
+        assertThatThrownBy(() -> auth.regenerateBackupCodes(userId, "000000"))
+                .isInstanceOf(InvalidCredentialsException.class);
+        verify(backupCodes, never()).deleteByUserId(any());
     }
 
     @Test

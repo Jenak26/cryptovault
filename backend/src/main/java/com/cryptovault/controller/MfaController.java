@@ -1,5 +1,6 @@
 package com.cryptovault.controller;
 
+import com.cryptovault.dto.BackupCodesResponse;
 import com.cryptovault.dto.MfaCodeRequest;
 import com.cryptovault.dto.MfaSetupResponse;
 import com.cryptovault.service.AuthService;
@@ -34,11 +35,16 @@ public class MfaController {
         return auth.setupMfa(currentUserId(principal));
     }
 
-    /** Confirm enrollment by proving a valid code. */
+    /** Confirm enrollment by proving a valid code; returns one-time recovery codes (shown once). */
     @PostMapping("/enable")
-    @ResponseStatus(HttpStatus.OK)
-    public void enable(@Valid @RequestBody MfaCodeRequest request, Principal principal) {
-        auth.enableMfa(currentUserId(principal), request.code());
+    public BackupCodesResponse enable(@Valid @RequestBody MfaCodeRequest request, Principal principal) {
+        return new BackupCodesResponse(auth.enableMfa(currentUserId(principal), request.code()));
+    }
+
+    /** Re-issue recovery codes, invalidating the previous set (requires a valid current code). */
+    @PostMapping("/backup-codes/regenerate")
+    public BackupCodesResponse regenerateBackupCodes(@Valid @RequestBody MfaCodeRequest request, Principal principal) {
+        return new BackupCodesResponse(auth.regenerateBackupCodes(currentUserId(principal), request.code()));
     }
 
     /** Turn MFA off (requires a valid current code). */
