@@ -74,11 +74,10 @@ class VaultRecordRepositoryIT {
 
     @Test
     void testActiveRecordsLifecycleAgainstRealContainers() {
-        // 1. Create and save a user role and user
-        Role role = Role.builder()
-                .name("USER")
-                .build();
-        Role savedRole = roleRepository.save(role);
+        // 1. Reuse the USER role that Flyway's V2 migration already seeds (inserting a second
+        //    one violates the unique name constraint), then create a user.
+        Role savedRole = roleRepository.findByName("USER")
+                .orElseGet(() -> roleRepository.save(Role.builder().name("USER").build()));
 
         User user = User.builder()
                 .id(UUID.randomUUID())
@@ -89,9 +88,10 @@ class VaultRecordRepositoryIT {
                 .build();
         User savedUser = userRepository.save(user);
 
-        // 2. Create and save a key version
+        // 2. Create and save a key version. Use a high, unused version number: KeyManager
+        //    seeds an active key at version 1 on startup, so reusing 1 would collide.
         CryptoKey cryptoKey = CryptoKey.builder()
-                .version(1)
+                .version(1000)
                 .algorithm("AES")
                 .status(KeyStatus.ACTIVE)
                 .encryptedKey("encryptedkeymaterial".getBytes(StandardCharsets.UTF_8))
