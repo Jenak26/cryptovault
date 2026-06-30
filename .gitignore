@@ -3,6 +3,16 @@
 thingsToknow.pdf
 phase-reports/
 
+# Personal planning & learning material — kept local, NOT for public/interviewers.
+# (docs/adr/ stays tracked — those are intentionally public.)
+docs/PLAN.md
+docs/PLAN.tex
+docs/plan_original.txt
+docs/TECH_STACK.md
+docs/CryptoVault_Implementation_Plan.pdf
+docs/CryptoVault_Learning_Guide.tex
+docs/superpowers/
+
 # --- Secrets / env files (never commit) ---
 .env
 *.env

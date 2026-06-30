@@ -1,15 +1,28 @@
-# 🔐 CryptoVault — Enterprise Cryptographic Vault
+<div align="center">
+
+# 🔐 CryptoVault
+### Enterprise Cryptographic Vault
+
+A **crypto-agile** secrets-storage engine — envelope encryption, key rotation, TOTP MFA, and full audit logging, implemented from scratch.
+
+<br/>
 
 [![CI](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml/badge.svg)](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml)
-&nbsp;![Java](https://img.shields.io/badge/Java-21-orange)
-&nbsp;![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5-green)
-&nbsp;![React](https://img.shields.io/badge/React-19-blue)
-&nbsp;![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-### Technologies used: Java 21 · Spring Boot 3 · Spring Security · Spring Data JPA · Hibernate · Flyway · MySQL 8 · Redis 7 · Bouncy Castle · JWT (jjwt) · HKDF / AES-256-GCM / ChaCha20-Poly1305 · RFC 6238 TOTP · JUnit 5 · Mockito · AssertJ · Testcontainers · OpenAPI / Swagger · React 19 · TypeScript · Vite · Axios · Docker · GitHub Actions · Render · Aiven · Upstash · Vercel
+[![Java](https://img.shields.io/badge/Java_21-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](#)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot_3-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)](#)
+[![Spring Security](https://img.shields.io/badge/Spring_Security-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white)](#)
+[![MySQL](https://img.shields.io/badge/MySQL_8-4479A1?style=for-the-badge&logo=mysql&logoColor=white)](#)
+[![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)](#)
+[![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](#)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](#)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](#)
 
-> **🔗 Live demo → [cryptovault-beige-beta.vercel.app](https://cryptovault-beige-beta.vercel.app)**
-> Register, store an encrypted secret, then enable TOTP MFA with recovery codes. _Hosted on free tiers — the first request after idle can take ~50 s to wake the backend._
+**[🚀 Live Demo](https://cryptovault-beige-beta.vercel.app)** &nbsp;•&nbsp; **[📖 Security Model](SECURITY.md)** &nbsp;•&nbsp; **[🧭 Design Decisions](docs/adr/README.md)**
+
+</div>
+
+> _The live demo runs on free tiers — the first request after idle can take ~50 s to wake the backend._
 
 ---
 
