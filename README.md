@@ -1,10 +1,14 @@
 # CryptoVault — Enterprise Cryptographic Vault
 
+[![CI](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml/badge.svg)](https://github.com/Jenak26/cryptovault/actions/workflows/ci.yml)
+
 ### Technologies used: Java 21, Spring Boot 3, Spring Security, Spring Data JPA, Hibernate, Flyway Migrations, MySQL 8, Redis 7, Bouncy Castle Provider, JWT (jjwt), Testcontainers, JUnit 5, Mockito, OpenAPI / Swagger UI, React 19, TypeScript, Vite, Vanilla CSS
 
 ---
 
-CryptoVault is a secure, bank-grade, crypto-agile secrets storage engine designed for modern financial architectures. It solves the critical problem of securing sensitive data at rest by implementing pluggable cryptography strategies, envelope encryption (Key Encrypting Keys wrapping Data Keys), automated key rotation, and compliance auditing, all accessed via a modern dark-mode React frontend.
+CryptoVault is a crypto-agile secrets storage engine that implements, from scratch, the patterns a managed KMS/HSM provides — so the mechanics are explicit rather than hidden behind a cloud API. It secures sensitive data at rest using pluggable cryptography strategies, envelope encryption (Key Encrypting Keys wrapping Data Keys), HKDF-derived key material, automated key rotation, and compliance auditing, all accessed via a modern dark-mode React frontend.
+
+> **Scope honesty:** this is a learning-grade implementation of production patterns, not a drop-in replacement for a real KMS/HSM. See [`SECURITY.md`](SECURITY.md) for the threat model and an explicit list of simplifications (e.g. the master secret lives in an environment variable here, where production would use AWS KMS / HashiCorp Vault / a hardware HSM).
 
 ---
 
