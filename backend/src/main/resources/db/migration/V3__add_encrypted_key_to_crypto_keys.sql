@@ -1,0 +1,1 @@
+ALTER TABLE crypto_keys ADD COLUMN encrypted_key VARBINARY(256) NOT NULL;
