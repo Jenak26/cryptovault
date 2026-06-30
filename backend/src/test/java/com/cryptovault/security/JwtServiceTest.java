@@ -40,8 +40,14 @@ class JwtServiceTest {
     @Test
     void rejectsTamperedToken() {
         String token = jwt.generateToken(UUID.randomUUID(), "USER");
-        char last = token.charAt(token.length() - 1);
-        String tampered = token.substring(0, token.length() - 1) + (last == 'A' ? 'B' : 'A');
+        // Flip the FIRST character of the signature segment, not the last: the trailing
+        // base64url char carries bits that don't always change the decoded signature bytes,
+        // which made the old last-char flip occasionally still verify (a flaky test).
+        int sigStart = token.lastIndexOf('.') + 1;
+        char first = token.charAt(sigStart);
+        String tampered = token.substring(0, sigStart)
+                + (first == 'A' ? 'B' : 'A')
+                + token.substring(sigStart + 1);
 
         assertThatThrownBy(() -> jwt.parseClaims(tampered)).isInstanceOf(JwtException.class);
     }

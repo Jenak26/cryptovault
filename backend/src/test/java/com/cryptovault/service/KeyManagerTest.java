@@ -97,9 +97,17 @@ class KeyManagerTest {
     }
 
     private byte[] encryptWithTestSecret(byte[] rawKey) throws Exception {
-        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-        byte[] kek = digest.digest(MASTER_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        
+        // Mirror KeyManager's HKDF-SHA256 KEK derivation so this simulated stored key decrypts.
+        org.bouncycastle.crypto.generators.HKDFBytesGenerator hkdf =
+                new org.bouncycastle.crypto.generators.HKDFBytesGenerator(
+                        new org.bouncycastle.crypto.digests.SHA256Digest());
+        hkdf.init(new org.bouncycastle.crypto.params.HKDFParameters(
+                MASTER_SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "cryptovault-hkdf-kek-salt-v1".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                "cryptovault-master-kek/aes-256-gcm/v1".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        byte[] kek = new byte[32];
+        hkdf.generateBytes(kek, 0, 32);
+
         byte[] iv = new byte[12];
         new java.security.SecureRandom().nextBytes(iv);
 
