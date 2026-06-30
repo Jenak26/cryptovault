@@ -2,6 +2,8 @@ package com.cryptovault.controller;
 
 import com.cryptovault.dto.AuthResponse;
 import com.cryptovault.dto.LoginRequest;
+import com.cryptovault.dto.LoginResponse;
+import com.cryptovault.dto.MfaVerifyRequest;
 import com.cryptovault.dto.RegisterRequest;
 import com.cryptovault.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,8 +17,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Authentication endpoints. All three are public (see {@code SecurityConfig}); identity for logout
- * comes from the bearer token itself, read directly until the JWT filter lands in Phase 3.
+ * Public authentication endpoints. Login may return either a JWT or an MFA challenge; the second
+ * factor is completed at {@code /api/auth/mfa/verify}. Identity for logout comes from the bearer
+ * token itself.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -36,9 +39,13 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public AuthResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
-        String ip = getClientIp(servletRequest);
-        return auth.login(request, ip);
+    public LoginResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        return auth.login(request, getClientIp(servletRequest));
+    }
+
+    @PostMapping("/mfa/verify")
+    public AuthResponse verifyMfa(@Valid @RequestBody MfaVerifyRequest request, HttpServletRequest servletRequest) {
+        return auth.verifyMfa(request.mfaToken(), request.code(), getClientIp(servletRequest));
     }
 
     @PostMapping("/logout")

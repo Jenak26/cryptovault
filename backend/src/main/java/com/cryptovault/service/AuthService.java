@@ -2,6 +2,8 @@ package com.cryptovault.service;
 
 import com.cryptovault.dto.AuthResponse;
 import com.cryptovault.dto.LoginRequest;
+import com.cryptovault.dto.LoginResponse;
+import com.cryptovault.dto.MfaSetupResponse;
 import com.cryptovault.dto.RegisterRequest;
 import com.cryptovault.entity.Role;
 import com.cryptovault.entity.User;
@@ -11,8 +13,10 @@ import com.cryptovault.exception.RateLimitExceededException;
 import com.cryptovault.repository.RoleRepository;
 import com.cryptovault.repository.UserRepository;
 import com.cryptovault.security.JwtService;
+import com.cryptovault.security.MfaChallengeStore;
 import com.cryptovault.security.RateLimiter;
 import com.cryptovault.security.TokenBlacklist;
+import com.cryptovault.security.TotpService;
 import io.jsonwebtoken.Claims;
 import java.time.Duration;
 import java.time.Instant;
@@ -22,7 +26,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Authentication orchestration: register, login, logout.
+ * Authentication orchestration: register, login (incl. optional TOTP second factor), logout, and
+ * MFA enrollment.
  */
 @Service
 public class AuthService {
@@ -37,10 +42,13 @@ public class AuthService {
     private final TokenBlacklist blacklist;
     private final RateLimiter rateLimiter;
     private final AuditService auditService;
+    private final TotpService totpService;
+    private final MfaChallengeStore mfaChallengeStore;
 
     public AuthService(UserRepository users, RoleRepository roles, PasswordEncoder encoder,
                        JwtService jwt, TokenBlacklist blacklist, RateLimiter rateLimiter,
-                       AuditService auditService) {
+                       AuditService auditService, TotpService totpService,
+                       MfaChallengeStore mfaChallengeStore) {
         this.users = users;
         this.roles = roles;
         this.encoder = encoder;
@@ -48,6 +56,8 @@ public class AuthService {
         this.blacklist = blacklist;
         this.rateLimiter = rateLimiter;
         this.auditService = auditService;
+        this.totpService = totpService;
+        this.mfaChallengeStore = mfaChallengeStore;
     }
 
     @Transactional
@@ -74,7 +84,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request, String ipAddress) {
+    public LoginResponse login(LoginRequest request, String ipAddress) {
         if (rateLimiter.isRateLimited(request.email(), ipAddress)) {
             throw new RateLimitExceededException();
         }
@@ -90,11 +100,18 @@ public class AuthService {
                 throw new InvalidCredentialsException();
             }
 
+            // Password is correct — the brute-force window can reset regardless of the MFA step.
             rateLimiter.clearFailures(request.email(), ipAddress);
-            auditService.log(user.getId(), "LOGIN_SUCCESS", ipAddress);
 
+            if (user.isMfaEnabled()) {
+                String challenge = mfaChallengeStore.create(user.getId());
+                auditService.log(user.getId(), "LOGIN_MFA_CHALLENGE", ipAddress);
+                return LoginResponse.mfaChallenge(challenge);
+            }
+
+            auditService.log(user.getId(), "LOGIN_SUCCESS", ipAddress);
             String token = jwt.generateToken(user.getId(), user.getRole().getName());
-            return new AuthResponse(token);
+            return LoginResponse.authenticated(token);
         } catch (InvalidCredentialsException ex) {
             rateLimiter.recordFailure(request.email(), ipAddress);
             throw ex;
@@ -102,8 +119,76 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResponse login(LoginRequest request) {
+    public LoginResponse login(LoginRequest request) {
         return login(request, "127.0.0.1");
+    }
+
+    /**
+     * Completes an MFA login: validates the challenge token and the TOTP code, then issues the JWT.
+     * Returns the same generic {@link InvalidCredentialsException} on any failure (expired challenge,
+     * wrong/replayed code) so the second step leaks nothing.
+     */
+    @Transactional(readOnly = true)
+    public AuthResponse verifyMfa(String mfaToken, String code, String ipAddress) {
+        UUID userId = mfaChallengeStore.consume(mfaToken);
+        if (userId == null) {
+            throw new InvalidCredentialsException();
+        }
+        User user = users.findById(userId).orElseThrow(InvalidCredentialsException::new);
+        if (!user.isMfaEnabled() || !totpService.verify(user.getMfaSecret(), code)) {
+            auditService.log(userId, "LOGIN_MFA_FAIL", ipAddress);
+            throw new InvalidCredentialsException();
+        }
+        auditService.log(userId, "LOGIN_SUCCESS", ipAddress);
+        String token = jwt.generateToken(user.getId(), user.getRole().getName());
+        return new AuthResponse(token);
+    }
+
+    /**
+     * Begins MFA enrollment: generates and stores a secret (kept inactive) and returns the otpauth
+     * URI for the authenticator app. The user must confirm a code via {@link #enableMfa} to activate.
+     */
+    @Transactional
+    public MfaSetupResponse setupMfa(UUID userId) {
+        User user = users.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        if (user.isMfaEnabled()) {
+            throw new IllegalStateException("MFA is already enabled");
+        }
+        String secret = totpService.generateSecret();
+        user.setMfaSecret(secret);
+        users.save(user);
+        return new MfaSetupResponse(secret, totpService.otpAuthUri(secret, user.getEmail()));
+    }
+
+    /** Activates MFA once the user proves they can produce a valid code from the new secret. */
+    @Transactional
+    public void enableMfa(UUID userId, String code) {
+        User user = users.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        if (user.getMfaSecret() == null) {
+            throw new IllegalStateException("Start MFA setup before enabling");
+        }
+        if (!totpService.verify(user.getMfaSecret(), code)) {
+            throw new InvalidCredentialsException();
+        }
+        user.setMfaEnabled(true);
+        users.save(user);
+        auditService.log(userId, "MFA_ENABLED", null);
+    }
+
+    /** Disables MFA; requires a valid current code so a hijacked session can't silently turn it off. */
+    @Transactional
+    public void disableMfa(UUID userId, String code) {
+        User user = users.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        if (!user.isMfaEnabled() || !totpService.verify(user.getMfaSecret(), code)) {
+            throw new InvalidCredentialsException();
+        }
+        user.setMfaEnabled(false);
+        user.setMfaSecret(null);
+        users.save(user);
+        auditService.log(userId, "MFA_DISABLED", null);
     }
 
     /**
