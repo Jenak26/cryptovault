@@ -52,6 +52,10 @@ never written to the database or logs.
   (`bl:jti:<id>`, TTL = the token's remaining lifetime). The `JwtAuthFilter` checks this blacklist
   on every request, so a logged-out token is rejected even though JWTs are otherwise stateless.
 - **`JwtAuthEntryPoint`** returns a clean `401` (not `403`) for unauthenticated access.
+- **Optional TOTP MFA.** Users can enrol a second factor (RFC 6238 TOTP, implemented from scratch
+  in `TotpService`). When enabled, login is two-step: the password step returns a short-lived,
+  single-use challenge (Redis, 5-min TTL) instead of a token, and the JWT is only issued after a
+  valid code is submitted to `/api/auth/mfa/verify`. Both steps fail with the same generic 401.
 
 ---
 
@@ -102,7 +106,8 @@ These are deliberate, known gaps — naming them is the point:
    keys (JWKS) and use short-lived access tokens + rotating refresh tokens.
 3. **No transport security in the app itself.** TLS is assumed to be terminated by a load
    balancer / ingress in front of the service; the app speaks plain HTTP locally.
-4. **No MFA yet.** TOTP-based MFA is the next planned increment.
+4. **No recovery/backup codes for MFA.** TOTP enrolment works, but a lost authenticator currently
+   has no self-service recovery path (production would issue one-time backup codes).
 5. **Decrypted DEKs are cached in process memory** for performance. Production would weigh this
    against memory-scraping risk and consider per-operation KMS calls or memory hygiene.
 6. **No key escrow / backup-and-restore or break-glass procedure** for the master secret.

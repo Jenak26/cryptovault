@@ -45,6 +45,15 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    /** Base32-encoded TOTP secret. Null until the user begins MFA enrollment. */
+    @Column(name = "mfa_secret", length = 64)
+    private String mfaSecret;
+
+    /** Whether a verified second factor is required at login. */
+    @Builder.Default
+    @Column(name = "mfa_enabled", nullable = false)
+    private boolean mfaEnabled = false;
+
     @PrePersist
     protected void onCreate() {
         if (this.id == null) {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
+import MfaSettings from '../components/MfaSettings';
 
 interface DashboardProps {
   onNavigate: (page: string) => void;
@@ -103,6 +104,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               </button>
             )}
           </div>
+
+          <MfaSettings />
         </>
       )}
     </div>
