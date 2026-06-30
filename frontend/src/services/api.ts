@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// API base URL is build-time configurable: set VITE_API_BASE_URL to the deployed backend URL.
+// Falls back to the local backend for development.
 const api = axios.create({
-  baseURL: 'http://localhost:8081',
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8081',
   headers: {
     'Content-Type': 'application/json',
   },

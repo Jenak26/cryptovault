@@ -3,6 +3,7 @@ package com.cryptovault.config;
 import com.cryptovault.security.JwtAccessDeniedHandler;
 import com.cryptovault.security.JwtAuthEntryPoint;
 import com.cryptovault.security.JwtAuthFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -13,6 +14,12 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Security configuration.
@@ -26,7 +33,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   <li>{@link JwtAuthEntryPoint} returns a clean 401 (not 403) on unauthenticated access.</li>
  * </ul>
  *
- * <p>Role-based authorization rules (RBAC) and login rate-limiting arrive in Phase 3.
+ * <p>Method-level RBAC ({@code @PreAuthorize}) and login rate-limiting are enforced elsewhere;
+ * CORS origins are configurable via {@code cryptovault.cors.allowed-origins} so the deployed
+ * frontend (a different origin) can call the API.
  */
 @Configuration
 @EnableWebSecurity
@@ -36,6 +45,10 @@ public class SecurityConfig {
     private final JwtAuthFilter jwtAuthFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+
+    /** Comma-separated list of allowed browser origins. Dev default is the Vite dev server. */
+    @Value("${cryptovault.cors.allowed-origins:http://localhost:5173}")
+    private String allowedOrigins;
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter,
                           JwtAuthEntryPoint jwtAuthEntryPoint,
@@ -48,6 +61,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
@@ -69,5 +83,18 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    /** CORS for the browser SPA. Origins come from config so prod can lock this to the real domain. */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.stream(allowedOrigins.split(",")).map(String::trim).toList());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        config.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }
