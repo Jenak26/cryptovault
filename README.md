@@ -20,6 +20,7 @@ CryptoVault is a crypto-agile secrets storage engine that implements, from scrat
 - 🔑 **Envelope Encryption**: Data keys are wrapped (encrypted) using a Master Key (KEK) derived via **HKDF-SHA256** from a high-entropy secret held in an environment variable. Raw key material is never stored in plaintext in the database.
 - 🔄 **Key Rotation & Migration**: Administrators rotate data keys at the click of a button (`POST /api/admin/rotate-key`) and kick off a background re-encryption pass (`POST /api/admin/re-encrypt`) to migrate legacy records onto the active key version and cipher.
 - 🔐 **JWT Auth + Hard Logout**: Stateless HMAC-SHA256 access tokens (`userId`, `role`, `jti`, `exp`). Logout blacklists the token's `jti` in Redis for its remaining lifetime, and the `JwtAuthFilter` rejects it on every subsequent request — so "logged out" actually means rejected, not merely forgotten.
+- 🔒 **TOTP Multi-Factor Auth**: Optional, per-user two-factor authentication built from scratch to RFC 6238 (no library). When enabled, login becomes two-step — the password step returns a short-lived single-use challenge and the JWT is only issued after a valid authenticator code. Compatible with Google Authenticator, Authy, and 1Password.
 - 👮 **Role-Based Access Control**: Method-level security (`@PreAuthorize("hasRole('ADMIN')")`) separates `USER` and `ADMIN` capabilities; admin-only routes return a clean `403` to ordinary users.
 - 📊 **Compliance Auditing**: Fully searchable, paginated compliance trails tracking logins, failed auth attempts, registrations, vault reads/writes/deletes, and key rotations — complete with proxy-aware IP capturing and nullable user IDs for failed logins against unknown emails.
 - 🚫 **Brute-Force Protection**: Redis-backed rate limiting tracks failed authentication attempts separately by IP and email, locking abusers out for 15 minutes after 5 failures.
@@ -219,9 +220,13 @@ Sensible dev defaults let the app boot out of the box. **Override these via envi
 |---|---|---|---|
 | `GET` | `/api/health` | public | Liveness check |
 | `POST` | `/api/auth/register` | public | Create user, bcrypt-hash password, issue JWT |
-| `POST` | `/api/auth/login` | public | Verify credentials, issue JWT (generic 401 on failure) |
+| `POST` | `/api/auth/login` | public | Verify credentials; issue JWT or an MFA challenge (generic 401 on failure) |
+| `POST` | `/api/auth/mfa/verify` | public | Complete an MFA login: challenge token + TOTP code → JWT |
 | `POST` | `/api/auth/logout` | user | Blacklist the current JWT's `jti` in Redis |
-| `GET` | `/api/me` | user | Current principal — proves the filter + blacklist end-to-end |
+| `GET` | `/api/me` | user | Current principal + MFA status — proves the filter + blacklist end-to-end |
+| `POST` | `/api/mfa/setup` | user | Begin TOTP enrolment; returns secret + otpauth URI |
+| `POST` | `/api/mfa/enable` | user | Activate MFA after confirming a valid code |
+| `POST` | `/api/mfa/disable` | user | Disable MFA (requires a valid current code) |
 | `POST` | `/api/vault/store` | user | Encrypt + store a record under the active algorithm/key |
 | `GET` | `/api/vault` | user | List the caller's record metadata |
 | `GET` | `/api/vault/{id}` | owner | Retrieve + decrypt by the record's stored algorithm/key version |
@@ -275,6 +280,8 @@ npm run build
 
 The MVP (Phases 0–8) is **complete**: schema, JWT auth with hard logout, RBAC, rate limiting, the pluggable crypto engine, key versioning/rotation, the vault store/retrieve flow, audit logging, and the React UI.
 
-Stretch goals (Phase 9), tackled only once the MVP is solid:
-- **V2:** MFA (TOTP / email OTP via Redis) and failed-login alerting. *(Background re-encryption is already implemented.)*
+Beyond the MVP, also implemented: **TOTP multi-factor auth** (from-scratch RFC 6238) and background **re-encryption** for cipher/key migration.
+
+Remaining stretch goals:
+- **V2:** MFA recovery/backup codes and failed-login alerting.
 - **V3:** Post-quantum cryptography via Bouncy Castle — ML-KEM, ML-DSA, and hybrid `X25519 + ML-KEM`.
