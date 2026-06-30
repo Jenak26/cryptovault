@@ -139,6 +139,26 @@ class VaultServiceTest {
     }
 
     @Test
+    void deleteRejectsNonOwnerWithAccessDenied() {
+        UUID recordId = UUID.randomUUID();
+        User otherUser = User.builder().id(UUID.randomUUID()).build();
+        VaultRecord record = VaultRecord.builder()
+                .id(recordId)
+                .user(otherUser)
+                .build();
+
+        when(vaultRepository.findActiveById(recordId)).thenReturn(Optional.of(record));
+
+        assertThatThrownBy(() -> vaultService.delete(recordId, userId))
+                .isInstanceOf(AccessDeniedException.class);
+
+        // The record must not be soft-deleted and no audit/save should happen on a denied attempt.
+        assertThat(record.getDeletedAt()).isNull();
+        verify(vaultRepository, never()).save(any(VaultRecord.class));
+        verify(auditService, never()).log(any(), eq("VAULT_DELETE"), any());
+    }
+
+    @Test
     void deleteSoftDeletesRecord() {
         UUID recordId = UUID.randomUUID();
         VaultRecord record = VaultRecord.builder()
