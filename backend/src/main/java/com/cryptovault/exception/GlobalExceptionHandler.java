@@ -60,10 +60,10 @@ public class GlobalExceptionHandler {
         return Map.of("error", "Missing or invalid token");
     }
 
-    /** Rate limit exceeded. */
-    @ExceptionHandler(TooManyRequestsException.class)
+    /** Login rate limit exceeded. */
+    @ExceptionHandler(RateLimitExceededException.class)
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
-    public Map<String, String> handleTooManyRequests(TooManyRequestsException ex) {
+    public Map<String, String> handleRateLimit(RateLimitExceededException ex) {
         return Map.of("error", ex.getMessage());
     }
 }

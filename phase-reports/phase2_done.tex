@@ -1,0 +1,205 @@
+% =====================================================================
+%  CryptoVault — Phase 2 Completion Report
+%  Compile free on https://www.overleaf.com (Upload -> Recompile)
+%  or locally with MiKTeX:  pdflatex phase2_done.tex
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{tcolorbox}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[hidelinks,colorlinks=true,linkcolor=blue!60!black,urlcolor=teal]{hyperref}
+
+\definecolor{accent}{RGB}{20,90,130}
+\definecolor{okgreen}{RGB}{30,120,60}
+\definecolor{lesson}{RGB}{95,55,140}
+\definecolor{codebg}{RGB}{245,245,248}
+
+\lstset{
+  backgroundcolor=\color{codebg}, basicstyle=\ttfamily\small,
+  breaklines=true, frame=single, rulecolor=\color{gray!40},
+  framesep=6pt, xleftmargin=10pt, numbers=none, showstringspaces=false,
+}
+
+\newtcolorbox{done}{colback=okgreen!7,colframe=okgreen!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Verified}}
+\newtcolorbox{lessonbox}{colback=lesson!7,colframe=lesson!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt,title=\textbf{Lesson learned}}
+\newtcolorbox{note}{colback=accent!6,colframe=accent!55,boxrule=0.6pt,
+  left=8pt,right=8pt,top=6pt,bottom=6pt}
+
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small CryptoVault — Phase 2 Report}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\large\bfseries\color{accent}}{\thesection}{0.6em}{}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\vspace{-1cm}\textbf{Phase 2 — Authentication Core}\\[3pt]
+\large Completion Report}
+\author{CryptoVault}
+\date{21 June 2026}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+\begin{note}
+\textbf{Phase goal (from the plan):} register, login, and logout working with bcrypt-hashed
+passwords, JWTs, and a Redis token blacklist --- and a logged-out token actually rejected on the
+next request.\\[4pt]
+\textbf{Status:} \textbf{Complete and verified live} against MySQL + Redis. 23 automated tests pass.
+Shipped as \textbf{PR \#2} (\code{phase-2-auth} $\rightarrow$ \code{main}) at
+\url{https://github.com/Jenak26/cryptovault/pull/2}. Builds on the teammate's merged Phase 1 schema.
+\end{note}
+
+% ---------------------------------------------------------------
+\section{What "Phase 2" Means}
+% ---------------------------------------------------------------
+Phase 1 created the tables; Phase 2 is the first real \emph{feature}: letting a human prove who they
+are. A user registers (their password is hashed, never stored in plain text), logs in (and receives
+a signed token they attach to future requests), and logs out (their token is invalidated). The hard
+part is doing it \emph{safely} --- the right error messages, no leaks, and tokens that can actually
+be turned off.
+
+% ---------------------------------------------------------------
+\section{What Was Built}
+% ---------------------------------------------------------------
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Endpoints} --- \code{POST /api/auth/register}, \code{/login}, \code{/logout}, plus a
+        protected \code{GET /api/me} to prove tokens are enforced.
+  \item \textbf{\code{JwtService}} --- creates and validates JSON Web Tokens (library: \code{jjwt}
+        0.12.6, algorithm HS256). Each token carries the user id, role, a unique id (\code{jti}), and
+        an expiry. Lifetime: \textbf{1 hour}. The signing secret lives in \code{application.yml} but
+        can be overridden by an environment variable for production.
+  \item \textbf{\code{TokenBlacklist}} --- a Redis-backed list of logged-out token ids. On logout the
+        token's \code{jti} is stored under \code{bl:jti:<id>} with a time-to-live equal to the
+        token's remaining life, so it cleans itself up automatically.
+  \item \textbf{\code{JwtAuthFilter}} --- runs on every request, reads the \code{Authorization:
+        Bearer} header, validates the token, checks the blacklist, and tells Spring Security who the
+        caller is (with authority \code{ROLE\_USER} / \code{ROLE\_ADMIN}).
+  \item \textbf{\code{AuthService}} --- the brain: bcrypt hashing, the login check, and the logout
+        blacklist call.
+  \item \textbf{Supporting pieces} --- request/response DTOs (Java \code{record}s) with validation,
+        a \code{GlobalExceptionHandler} mapping errors to clean JSON, a 401 entry point, and the
+        \code{SecurityConfig} wiring.
+  \item \textbf{\code{dev-console.html}} --- a small throwaway web page to click through the whole
+        flow in a browser (dev-only; safe to delete before any real deploy).
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Key Decisions (locked)}
+% ---------------------------------------------------------------
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Generic login errors.} A wrong password \emph{and} an unknown email both return the
+        same \code{401 "Invalid credentials"}. This stops an attacker from discovering which emails
+        are registered. (Registration is the one exception --- a duplicate email must return
+        \code{409}, because signup unavoidably reveals the address is taken.)
+  \item \textbf{One short-lived token, no refresh tokens.} Refresh tokens are a Phase~V2 concern ---
+        not built now (YAGNI).
+  \item \textbf{Secret from the environment.} A dev default lets the app run out of the box; real
+        deployments override \code{CRYPTOVAULT\_JWT\_SECRET}. Secrets never get committed.
+  \item \textbf{Roles are uppercase} (\code{USER}/\code{ADMIN}) to match Phase 1's seed and Spring's
+        \code{hasRole()} convention.
+\end{itemize}
+
+% ---------------------------------------------------------------
+\section{Verification (evidence, not claims)}
+% ---------------------------------------------------------------
+\begin{done}
+\textbf{1. Automated tests --- 23/23 green.} \code{JwtService} (5, incl. expired + tampered token
+rejection), \code{TokenBlacklist} (3), \code{AuthService} (6), \code{AuthController} (4),
+\code{JwtAuthFilter} (4), and the application context load (1).
+\end{done}
+
+\begin{done}
+\textbf{2. The real flow, run live against MySQL + Redis:}
+\begin{lstlisting}
+register      -> 200 + JWT
+login         -> 200 + JWT
+GET /api/me   -> 200   (valid token accepted)
+GET /api/me   -> 401   (no token)
+logout        -> 200
+GET /api/me   -> 401   (SAME token, now rejected)
+wrong password-> 401   (generic message)
+\end{lstlisting}
+The database stored bcrypt hashes (\code{\$2a\$10\$...}, 60 chars) --- \textbf{zero plaintext
+passwords}.
+\end{done}
+
+% ---------------------------------------------------------------
+\section{What I Learned}
+% ---------------------------------------------------------------
+
+\begin{lessonbox}
+\textbf{1. Passing unit tests do \emph{not} mean the feature works.}
+Login passed every unit test, then failed the moment it ran for real with a
+\code{LazyInitializationException}. The cause: the code read the user's \code{role} \emph{after} the
+database session had closed (a JPA "lazy loading" trap, made stricter by our \code{open-in-view:
+false} setting). The unit tests missed it because they used \emph{mock} objects, which are never
+lazy. \\[4pt]
+\textbf{Why it matters:} mocks prove your \emph{logic}; only a real database proves your
+\emph{wiring}. The fix was one annotation (\code{@Transactional}, which keeps the session open), but
+the lesson is bigger than the fix.
+\end{lessonbox}
+
+\begin{lessonbox}
+\textbf{2. A phase's "done when" must be testable \emph{inside} that phase.}
+The plan said Phase~2 was done when "logout $\rightarrow$ token rejected on next call" --- but the
+piece that actually \emph{rejects} a token (the JWT filter) was scheduled for Phase~3, and there was
+no protected route to be rejected from. The plan quietly contradicted itself. A blacklist that
+nothing reads is untestable. \\[4pt]
+\textbf{What we did:} pulled the basic filter and one protected endpoint (\code{/api/me}) into
+Phase~2 so its own success criterion is real, and re-scoped Phase~3 to RBAC + rate limiting. Both
+\code{docs/PLAN.md} and the design spec were updated with a dated note.
+\end{lessonbox}
+
+\begin{lessonbox}
+\textbf{3. Security is mostly about what you \emph{don't} reveal.}
+The most important line of the login code is the one that makes a wrong password and a missing
+account look identical. Good security here is a deliberate \emph{absence} of information --- no
+existence leaks, no secrets in logs, no plaintext in the database.
+\end{lessonbox}
+
+% ---------------------------------------------------------------
+\section{How to Do This Better Next Time}
+% ---------------------------------------------------------------
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Run one real end-to-end test \emph{early}}, not just at the end. Had I hit the live
+        endpoint after the first login implementation, the lazy-loading bug would have surfaced in
+        minutes instead of after the whole service was written.
+  \item \textbf{Before starting a phase, read its "done when" and ask: can I prove this with only
+        what's in this phase?} If proving it needs something from a later phase, the plan is wrong ---
+        fix the plan first, then code.
+  \item \textbf{Keep the brainstorm $\rightarrow$ spec $\rightarrow$ plan $\rightarrow$ build order.}
+        Writing the design spec first (what, why, which errors, which status codes) made the actual
+        coding fast and removed guesswork. The spec lives in
+        \code{docs/superpowers/specs/}.
+  \item \textbf{Commit in small, labelled steps} (design, then core, then enforcement). When
+        something breaks, a small commit is easy to inspect and revert.
+  \item \textbf{Treat "it compiles" and "tests pass" as necessary but not sufficient.} The bar is a
+        live run with the real database and cache.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\section{Next: Phase 3 --- RBAC \& Rate Limiting}
+% ---------------------------------------------------------------
+With authentication proven, Phase~3 adds \emph{authorization}: role-based rules
+(\code{@PreAuthorize("hasRole('ADMIN')")}) so admin-only routes return 403 for normal users, plus a
+Redis-based rate limiter that blocks brute-force login attempts. The JWT filter it needs is already
+built and shipping in this phase, so Phase~3 can focus purely on the role rules and the limiter.
+
+\vspace{1em}
+\begin{center}\itshape Phase 2 complete --- users can register, log in, and log out, and a
+logged-out token is genuinely rejected. Verified end-to-end, not just asserted.\end{center}
+
+\end{document}

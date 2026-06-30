@@ -53,7 +53,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public: liveness, auth endpoints, and the dev-only test console.
                         .requestMatchers("/api/health", "/actuator/health", "/api/auth/**",
-                                "/dev-console.html", "/error").permitAll()
+                                "/dev-console.html", "/error",
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex

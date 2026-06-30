@@ -36,4 +36,7 @@ public class CryptoKey {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private KeyStatus status;
+
+    @Column(name = "encrypted_key", nullable = false)
+    private byte[] encryptedKey;
 }
