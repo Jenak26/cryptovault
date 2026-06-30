@@ -1,5 +1,6 @@
 package com.cryptovault.config;
 
+import com.cryptovault.security.JwtAccessDeniedHandler;
 import com.cryptovault.security.JwtAuthEntryPoint;
 import com.cryptovault.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
@@ -34,10 +35,14 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final JwtAuthEntryPoint jwtAuthEntryPoint;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter, JwtAuthEntryPoint jwtAuthEntryPoint) {
+    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
+                          JwtAuthEntryPoint jwtAuthEntryPoint,
+                          JwtAccessDeniedHandler jwtAccessDeniedHandler) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.jwtAuthEntryPoint = jwtAuthEntryPoint;
+        this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
     }
 
     @Bean
@@ -48,10 +53,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public: liveness, auth endpoints, and the dev-only test console.
                         .requestMatchers("/api/health", "/actuator/health", "/api/auth/**",
-                                "/dev-console.html", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                                "/dev-console.html", "/error",
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()
                 )
-                .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthEntryPoint))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jwtAuthEntryPoint)
+                        .accessDeniedHandler(jwtAccessDeniedHandler)
+                )
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
