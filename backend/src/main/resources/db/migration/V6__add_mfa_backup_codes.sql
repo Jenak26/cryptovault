@@ -10,4 +10,4 @@ CREATE TABLE mfa_backup_codes (
     CONSTRAINT fk_backup_codes_user FOREIGN KEY (user_id) REFERENCES users (id),
     INDEX idx_backup_user_hash (user_id, code_hash),
     INDEX idx_backup_user_used (user_id, used)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
