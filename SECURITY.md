@@ -56,6 +56,10 @@ never written to the database or logs.
   in `TotpService`). When enabled, login is two-step: the password step returns a short-lived,
   single-use challenge (Redis, 5-min TTL) instead of a token, and the JWT is only issued after a
   valid code is submitted to `/api/auth/mfa/verify`. Both steps fail with the same generic 401.
+- **MFA recovery codes.** Enabling MFA issues ten one-time backup codes (shown once). Only their
+  SHA-256 hashes are stored; redeeming one at login marks it used. They can be regenerated (which
+  invalidates the old set) and are cleared when MFA is disabled — so a lost authenticator no longer
+  means a locked-out account.
 
 ---
 
@@ -106,8 +110,9 @@ These are deliberate, known gaps — naming them is the point:
    keys (JWKS) and use short-lived access tokens + rotating refresh tokens.
 3. **No transport security in the app itself.** TLS is assumed to be terminated by a load
    balancer / ingress in front of the service; the app speaks plain HTTP locally.
-4. **No recovery/backup codes for MFA.** TOTP enrolment works, but a lost authenticator currently
-   has no self-service recovery path (production would issue one-time backup codes).
+4. **No admin-driven account recovery.** Users can self-recover with one-time backup codes, but
+   there's no support/admin "reset MFA" or "reset password" flow (production would need one, with
+   its own authorization and audit controls).
 5. **Decrypted DEKs are cached in process memory** for performance. Production would weigh this
    against memory-scraping risk and consider per-operation KMS calls or memory hygiene.
 6. **No key escrow / backup-and-restore or break-glass procedure** for the master secret.
