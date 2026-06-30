@@ -8,13 +8,15 @@ import org.junit.jupiter.api.Test;
 class BackupCodesTest {
 
     @Test
-    void generatesDashedTenCharacterCodes() {
-        String code = BackupCodes.generate(new SecureRandom());
-
-        assertThat(code).matches("[A-Z2-9]{5}-[A-Z2-9]{5}");
-        // Crockford-style alphabet excludes easily-confused characters.
-        assertThat(code).doesNotContainAnyWhitespaces();
-        assertThat(code.replace("-", "")).doesNotContain("O", "I", "L", "0", "1");
+    void generatesDashedCodesFromAnUnambiguousAlphabet() {
+        SecureRandom random = new SecureRandom();
+        // Loop so an alphabet regression can't pass by luck of the draw.
+        for (int i = 0; i < 500; i++) {
+            String code = BackupCodes.generate(random);
+            assertThat(code).matches("[A-HJKMNP-Z2-9]{5}-[A-HJKMNP-Z2-9]{5}");
+            // Confusable characters must never appear.
+            assertThat(code).doesNotContain("O", "I", "L", "0", "1", " ");
+        }
     }
 
     @Test

@@ -14,8 +14,8 @@ import java.util.HexFormat;
  */
 public final class BackupCodes {
 
-    // Crockford-style alphabet: no 0/O/1/I to avoid transcription errors.
-    private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    // Crockford-style alphabet: excludes I, L, O (and 0/1) to avoid transcription errors.
+    private static final String ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
     private static final int GROUP = 5;
 
     private BackupCodes() {
